@@ -1,0 +1,38 @@
+[project]
+name = "keyboard-killer"
+version = "0.1.0"
+description = "Dual-camera stereo gaze tracking, pop-click detection, and voice/AI control for Linux Wayland"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "evdev>=2.0.0",
+    "faster-whisper>=1.2.1",
+    "httpx>=0.28.1",
+    "jeepney>=0.9.0",
+    "mediapipe>=1.2.3",
+    "numpy>=2.5.5",
+    "ollama>=0.6.3",
+    "opencv-python>=5.1.0.95",
+    "pydantic>=2.14.3",
+    "rapidfuzz>=3.14.6",
+    "rapidocr-onnxruntime>=1.4.4",
+    "scikit-learn>=1.9.1",
+    "sounddevice>=0.5.6",
+    "typer>=0.29.1",
+    "websockets>=17.4",
+]
+
+[project.scripts]
+keyboard-killer = "keyboard_killer.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/keyboard_killer"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]

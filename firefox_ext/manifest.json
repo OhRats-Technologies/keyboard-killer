@@ -1,0 +1,29 @@
+{
+  "manifest_version": 2,
+  "name": "Keyboard-Killer Gaze & DOM Bridge",
+  "version": "1.0.0",
+  "description": "Low-latency WebSocket bridge connecting Linux stereo gaze and voice commands to the Firefox DOM.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "keyboard-killer@local.dev",
+      "strict_min_version": "109.0"
+    }
+  },
+  "permissions": [
+    "<all_urls>",
+    "tabs",
+    "activeTab"
+  ],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content_script.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
