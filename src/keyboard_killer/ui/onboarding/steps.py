@@ -536,6 +536,7 @@ class ProviderPage(StepPage):
             return
         preset = str(self.preset.currentData())
         set_secret(preset, key)
+        self.config.llm_provider = "openai_compat"
         self.config.llm_preset = preset
         self.config.llm_model = self.model.text().strip()
         self.config.save(self.paths.settings_path)

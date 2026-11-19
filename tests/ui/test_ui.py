@@ -141,6 +141,7 @@ def test_settings_panel_saves_same_config(qapp, tmp_path: Path) -> None:
     assert loaded.ptt_hotkey == "KEY_F9"
     assert loaded.always_on_voice is False
     assert loaded.stt_engine == "whisper"
+    assert loaded.llm_provider == "openai_compat"
 
 
 def test_history_store_and_panel(qapp, tmp_path: Path) -> None:

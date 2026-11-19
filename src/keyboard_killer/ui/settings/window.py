@@ -128,6 +128,7 @@ class SettingsPanel(QWidget):
         cfg.stt_engine = self.stt_engine.currentText()
         cfg.whisper_model = self.whisper_model.text().strip() or "base.en"
         cfg.llm_preset = str(self.provider_preset.currentData() or "openai")
+        cfg.llm_provider = "openai_compat"
         cfg.llm_model = self.llm_model.text().strip()
         cfg.gaze_vlm_remote_consent = self.vlm_consent.isChecked()
         cfg.save(self.paths.settings_path)
