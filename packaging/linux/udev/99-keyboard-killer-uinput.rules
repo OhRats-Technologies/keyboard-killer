@@ -1,0 +1,3 @@
+# Grant the active desktop session write access to /dev/uinput.
+# Installed by the keyboard-killer .deb and usable by the developer setup script.
+KERNEL=="uinput", SUBSYSTEM=="misc", MODE="0660", GROUP="input", TAG+="uaccess"

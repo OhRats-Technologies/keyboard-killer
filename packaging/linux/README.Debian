@@ -1,0 +1,49 @@
+Keyboard-Killer for Debian/Ubuntu
+===============================
+
+Install
+-------
+
+  sudo apt install ./keyboard-killer_<version>_amd64.deb
+
+The package installs:
+
+  /usr/bin/keyboard-killer                  CLI and UI launcher
+  /opt/keyboard-killer/                     self-contained Python runtime
+  /usr/share/applications/keyboard-killer.desktop
+  /usr/lib/udev/rules.d/99-keyboard-killer-uinput.rules
+  /usr/lib/systemd/user/keyboard-killer.service (optional, not enabled)
+
+First run
+---------
+
+Open "Keyboard-Killer" from the application menu. Setup:
+
+  1. Permissions: camera, microphone, /dev/uinput, input devices, screen capture.
+  2. Cameras: choose two stable /dev/v4l/by-id devices.
+  3. Calibration: the full-screen target window.
+  4. Speech: download the pinned Parakeet model (about 630 MB) or keep Whisper.
+  5. Optional AI provider: OpenAI-compatible, Ollama, or an installed ACP agent.
+  6. Practice: one contained click, then Start listening.
+
+The /dev/uinput udev rule uses TAG+="uaccess", so the active desktop session gets
+write access without a re-login.  If the rule is ignored, log out and back in.
+
+Privacy
+-------
+
+Camera, speech, and history stay on this device.  A remote AI provider is optional
+and is never selected automatically.  Screenshots are only sent to a remote gaze
+VLM after the explicit "Allow screenshots to leave this device" consent.
+
+Autostart (optional)
+--------------------
+
+  systemctl --user enable --now keyboard-killer.service
+
+Uninstall
+---------
+
+  sudo apt remove keyboard-killer
+  rm -rf ~/.local/share/keyboard-killer   # models, history (optional)
+  rm -rf ~/.config/keyboard-killer        # settings, calibration (optional)

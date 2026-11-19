@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Keyboard-Killer
+GenericName=Gaze and voice control
+Comment=Look at a target and say what to do
+Exec=/usr/bin/keyboard-killer ui
+Icon=keyboard-killer
+Terminal=false
+Categories=Utility;Accessibility;
+Keywords=gaze;voice;accessibility;eye;tracking;
+StartupNotify=true
+StartupWMClass=keyboard-killer

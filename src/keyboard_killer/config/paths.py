@@ -111,6 +111,10 @@ class AppPaths:
     def log_path(self) -> Path:
         return self.logs_dir / "app.jsonl"
 
+    @property
+    def autostart_path(self) -> Path:
+        return self.config_dir.parent / "autostart" / "keyboard-killer.desktop"
+
     # --- one-time migration -------------------------------------------
     @property
     def migration_marker_path(self) -> Path:

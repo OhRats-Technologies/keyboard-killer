@@ -1,0 +1,15 @@
+[Unit]
+Description=Keyboard-Killer gaze and voice daemon
+Documentation=file:///usr/share/doc/keyboard-killer/README.Debian
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/keyboard-killer run
+Restart=on-failure
+RestartSec=3
+Slice=app.slice
+
+[Install]
+WantedBy=graphical-session.target

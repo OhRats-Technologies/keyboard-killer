@@ -291,6 +291,16 @@ def detect_capabilities(
     if paths is not None and hasattr(paths, "as_dict"):
         report.paths = paths.as_dict()  # type: ignore[union-attr]
 
+    if host in ("macos", "windows"):
+        module = __import__(
+            f"keyboard_killer.platform.{host}.capabilities",
+            fromlist=["detect"],
+        )
+        delegated = module.detect()
+        if paths is not None and hasattr(paths, "as_dict"):
+            delegated.paths = paths.as_dict()  # type: ignore[union-attr]
+        return delegated
+
     if host != "linux":
         for capability in Capability:
             report.set(
