@@ -1,0 +1,272 @@
+{
+  "label": "synthetic-tts-command-phrases",
+  "generated_at": "2026-11-19",
+  "machine": "Linux x86_64, CPU only (no CUDA used)",
+  "manifest": "not committed; see docs/features/stt.md to recreate",
+  "reports": [
+    {
+      "engine": "parakeet",
+      "status": {
+        "name": "parakeet-tdt-0.6b-v2",
+        "ready": true,
+        "device": "cpu",
+        "compute_type": "int8",
+        "model": "/home/fer/.local/share/keyboard-killer/models/parakeet-tdt-0.6b-v2",
+        "detail": "App-owned pinned model."
+      },
+      "samples": 12,
+      "exact_match": 1.0,
+      "mean_wer": 0.0,
+      "latency_ms": {
+        "mean": 175.82952915593827,
+        "median": 170.13851349474862,
+        "p95": 197.5515759550035,
+        "min": 149.09170800819993,
+        "max": 255.5616629542783
+      },
+      "real_time_factor": 0.08817930248542541,
+      "results": [
+        {
+          "id": "click_send",
+          "expected": "click send",
+          "actual": "Click Send.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 255.5616629542783,
+          "audio_s": 1.872
+        },
+        {
+          "id": "scroll_down",
+          "expected": "scroll down",
+          "actual": "Scroll down.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 171.56048398464918,
+          "audio_s": 1.896
+        },
+        {
+          "id": "scroll_up",
+          "expected": "scroll up",
+          "actual": "Scroll up.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 163.44884899444878,
+          "audio_s": 1.872
+        },
+        {
+          "id": "right_click",
+          "expected": "right click",
+          "actual": "Right click.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 158.28740695724264,
+          "audio_s": 1.872
+        },
+        {
+          "id": "double_click",
+          "expected": "double click",
+          "actual": "Double click.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 150.2394829876721,
+          "audio_s": 1.872
+        },
+        {
+          "id": "go_back",
+          "expected": "go back",
+          "actual": "Go back.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 149.09170800819993,
+          "audio_s": 1.872
+        },
+        {
+          "id": "new_tab",
+          "expected": "new tab",
+          "actual": "New tab",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 158.87684898916632,
+          "audio_s": 1.872
+        },
+        {
+          "id": "close_window",
+          "expected": "close window",
+          "actual": "Close window.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 168.71654300484806,
+          "audio_s": 1.944
+        },
+        {
+          "id": "type_hello",
+          "expected": "type hello world",
+          "actual": "Type Hello World",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 197.5515759550035,
+          "audio_s": 2.136
+        },
+        {
+          "id": "open_firefox",
+          "expected": "open firefox",
+          "actual": "Open Firefox.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 174.2065210128203,
+          "audio_s": 2.256
+        },
+        {
+          "id": "search_cats",
+          "expected": "search for cats",
+          "actual": "Search for cats.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 180.45417702523991,
+          "audio_s": 2.112
+        },
+        {
+          "id": "click_subscribe",
+          "expected": "click the subscribe button",
+          "actual": "Click the subscribe button.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 181.95908999769017,
+          "audio_s": 2.352
+        }
+      ]
+    },
+    {
+      "engine": "whisper",
+      "status": {
+        "name": "faster-whisper",
+        "ready": true,
+        "device": "cpu",
+        "compute_type": "int8",
+        "model": "base.en",
+        "detail": "Automatic fallback engine."
+      },
+      "samples": 12,
+      "exact_match": 1.0,
+      "mean_wer": 0.0,
+      "latency_ms": {
+        "mean": 316.18794791089994,
+        "median": 312.9675059753936,
+        "p95": 337.89929596241564,
+        "min": 286.05395200429484,
+        "max": 344.8232359951362
+      },
+      "real_time_factor": 0.15856968300446334,
+      "results": [
+        {
+          "id": "click_send",
+          "expected": "click send",
+          "actual": "Click Send.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 334.3572089797817,
+          "audio_s": 1.872
+        },
+        {
+          "id": "scroll_down",
+          "expected": "scroll down",
+          "actual": "Scroll down.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 307.3252940084785,
+          "audio_s": 1.896
+        },
+        {
+          "id": "scroll_up",
+          "expected": "scroll up",
+          "actual": "Scroll up.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 316.7182969627902,
+          "audio_s": 1.872
+        },
+        {
+          "id": "right_click",
+          "expected": "right click",
+          "actual": "Right click.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 309.1975739807822,
+          "audio_s": 1.872
+        },
+        {
+          "id": "double_click",
+          "expected": "double click",
+          "actual": "Double click.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 286.05395200429484,
+          "audio_s": 1.872
+        },
+        {
+          "id": "go_back",
+          "expected": "go back",
+          "actual": "Go back.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 292.2549369977787,
+          "audio_s": 1.872
+        },
+        {
+          "id": "new_tab",
+          "expected": "new tab",
+          "actual": "New tab.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 297.7967170299962,
+          "audio_s": 1.872
+        },
+        {
+          "id": "close_window",
+          "expected": "close window",
+          "actual": "Close window.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 309.21671498799697,
+          "audio_s": 1.944
+        },
+        {
+          "id": "type_hello",
+          "expected": "type hello world",
+          "actual": "Type Hello World!",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 333.1841329927556,
+          "audio_s": 2.136
+        },
+        {
+          "id": "open_firefox",
+          "expected": "open firefox",
+          "actual": "Open Firefox.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 325.4280150285922,
+          "audio_s": 2.256
+        },
+        {
+          "id": "search_cats",
+          "expected": "search for cats",
+          "actual": "Search for cats.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 337.89929596241564,
+          "audio_s": 2.112
+        },
+        {
+          "id": "click_subscribe",
+          "expected": "click the subscribe button",
+          "actual": "Click the subscribe button.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 344.8232359951362,
+          "audio_s": 2.352
+        }
+      ]
+    }
+  ]
+}

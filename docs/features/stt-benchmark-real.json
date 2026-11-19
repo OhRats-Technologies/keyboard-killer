@@ -1,0 +1,776 @@
+{
+  "label": "real-human-command-clips",
+  "generated_at": "2026-11-19",
+  "machine": "Linux x86_64, CPU only (no CUDA used)",
+  "manifest": "not committed; see docs/features/stt.md to recreate",
+  "reports": [
+    {
+      "engine": "parakeet",
+      "status": {
+        "name": "parakeet-tdt-0.6b-v2",
+        "ready": true,
+        "device": "cpu",
+        "compute_type": "int8",
+        "model": "/home/fer/.local/share/keyboard-killer/models/parakeet-tdt-0.6b-v2",
+        "detail": "App-owned pinned model."
+      },
+      "samples": 40,
+      "exact_match": 0.925,
+      "mean_wer": 0.025,
+      "latency_ms": {
+        "mean": 239.18532909301575,
+        "median": 245.39635848486796,
+        "p95": 259.5169100095518,
+        "min": 190.46242401236668,
+        "max": 338.64584198454395
+      },
+      "real_time_factor": 0.0489906266714363,
+      "results": [
+        {
+          "id": "real_000",
+          "expected": "Play a song",
+          "actual": "Play a song",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 338.64584198454395,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_001",
+          "expected": "Start the music",
+          "actual": "Start the music",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 258.0288670142181,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_002",
+          "expected": "Put on the music",
+          "actual": "Put on the music.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 192.9046169971116,
+          "audio_s": 2.7306875
+        },
+        {
+          "id": "real_003",
+          "expected": "Weather",
+          "actual": "Weather",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 251.33011199068278,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_004",
+          "expected": "What's the weather?",
+          "actual": "What's the weather?",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 224.5592519757338,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_005",
+          "expected": "Tell me the weather",
+          "actual": "Tell me the weather.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 224.846817960497,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_006",
+          "expected": "Time",
+          "actual": "Time.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 273.1906549888663,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_007",
+          "expected": "What time is it?",
+          "actual": "What time is it?",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 248.08947200654075,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_008",
+          "expected": "Tell me the time",
+          "actual": "Tell me the time.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 248.65150399273261,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_009",
+          "expected": "Lights on",
+          "actual": "Lights on.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 257.3509520152584,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_010",
+          "expected": "Power on the lights",
+          "actual": "Power on the lights.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 252.81494401860982,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_011",
+          "expected": "Turn on the lights",
+          "actual": "Turn on the lights.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 212.61520398547873,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_012",
+          "expected": "Lights off",
+          "actual": "Lights off.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 222.54277899628505,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_013",
+          "expected": "Kill the lights",
+          "actual": "Kill the lights.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 228.2860929844901,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_014",
+          "expected": "Turn off the lights",
+          "actual": "Turn off the lights.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 224.43442000076175,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_015",
+          "expected": "Pause",
+          "actual": "Pause.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 248.257745988667,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_016",
+          "expected": "Pause the music",
+          "actual": "Pause the music.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 253.39481700211763,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_017",
+          "expected": "Pause this song",
+          "actual": "Pause the song",
+          "exact": false,
+          "wer": 0.3333333333333333,
+          "latency_ms": 259.5169100095518,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_018",
+          "expected": "Stop music",
+          "actual": "Stop music.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 246.45843700272962,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_019",
+          "expected": "Stop playing music",
+          "actual": "Stop playing music",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 245.57931703748181,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_020",
+          "expected": "Turn off the music",
+          "actual": "Turn off the music.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 190.46242401236668,
+          "audio_s": 2.56
+        },
+        {
+          "id": "real_021",
+          "expected": "Next song",
+          "actual": "Next Song",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 225.37028999067843,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_022",
+          "expected": "Skip song",
+          "actual": "Skip Song",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 222.95946796657518,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_023",
+          "expected": "Play next song",
+          "actual": "Play next song.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 251.87397398985922,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_024",
+          "expected": "Volume up",
+          "actual": "Volume up!",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 225.18956603016704,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_025",
+          "expected": "Increase the volume",
+          "actual": "Increase the volume.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 217.82946697203442,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_026",
+          "expected": "Turn the volume up",
+          "actual": "Turn the volume up.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 224.18417397420853,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_027",
+          "expected": "Volume down",
+          "actual": "Volume down",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 226.57856700243428,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_028",
+          "expected": "Lower the volume",
+          "actual": "Lower the volume.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 218.56120298616588,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_029",
+          "expected": "Turn the volume down",
+          "actual": "Turn the volume down.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 221.8511130195111,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_030",
+          "expected": "Call",
+          "actual": "Call.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 256.38233195059,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_031",
+          "expected": "Make a call",
+          "actual": "Make a call.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 249.6983070159331,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_032",
+          "expected": "Make a phone call",
+          "actual": "Make a phone call.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 253.72913398314267,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_033",
+          "expected": "Message",
+          "actual": "Message",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 245.2959209913388,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_034",
+          "expected": "Send a message",
+          "actual": "Send a message.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 245.49679597839713,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_035",
+          "expected": "Send my message",
+          "actual": "Send my message.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 258.48448695614934,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_036",
+          "expected": "Reminders",
+          "actual": "Reminders.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 250.9691640152596,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_037",
+          "expected": "Show my reminders",
+          "actual": "Show me reminders",
+          "exact": false,
+          "wer": 0.3333333333333333,
+          "latency_ms": 213.92354200361297,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_038",
+          "expected": "List my reminders",
+          "actual": "List my reminders",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 244.02622395427898,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_039",
+          "expected": "Timer 10 seconds",
+          "actual": "Timer ten seconds.",
+          "exact": false,
+          "wer": 0.3333333333333333,
+          "latency_ms": 213.04825297556818,
+          "audio_s": 5.0
+        }
+      ]
+    },
+    {
+      "engine": "whisper",
+      "status": {
+        "name": "faster-whisper",
+        "ready": true,
+        "device": "cpu",
+        "compute_type": "int8",
+        "model": "base.en",
+        "detail": "Automatic fallback engine."
+      },
+      "samples": 40,
+      "exact_match": 0.925,
+      "mean_wer": 0.058333333333333334,
+      "latency_ms": {
+        "mean": 328.52854130178457,
+        "median": 318.75161701464094,
+        "p95": 346.54511499684304,
+        "min": 290.77307600528,
+        "max": 618.8082699663937
+      },
+      "real_time_factor": 0.06729016022369927,
+      "results": [
+        {
+          "id": "real_000",
+          "expected": "Play a song",
+          "actual": "Play a song",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 323.10451596276835,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_001",
+          "expected": "Start the music",
+          "actual": "Start the music",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 294.00338599225506,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_002",
+          "expected": "Put on the music",
+          "actual": "Put on the music.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 334.9703639978543,
+          "audio_s": 2.7306875
+        },
+        {
+          "id": "real_003",
+          "expected": "Weather",
+          "actual": "weather",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 290.77307600528,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_004",
+          "expected": "What's the weather?",
+          "actual": "What's the weather?",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 314.0873510274105,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_005",
+          "expected": "Tell me the weather",
+          "actual": "Tell me the weather",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 346.54511499684304,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_006",
+          "expected": "Time",
+          "actual": "Bye",
+          "exact": false,
+          "wer": 1.0,
+          "latency_ms": 301.4721680083312,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_007",
+          "expected": "What time is it?",
+          "actual": "What time is it?",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 318.8122730352916,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_008",
+          "expected": "Tell me the time",
+          "actual": "Tell me the time",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 307.99792998004705,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_009",
+          "expected": "Lights on",
+          "actual": "Lights on.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 298.51140500977635,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_010",
+          "expected": "Power on the lights",
+          "actual": "Power on the lights",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 318.6909609939903,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_011",
+          "expected": "Turn on the lights",
+          "actual": "Turn on the lights.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 338.4621390141547,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_012",
+          "expected": "Lights off",
+          "actual": "Lights off.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 303.6831059725955,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_013",
+          "expected": "Kill the lights",
+          "actual": "Kill the lights.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 319.9682090198621,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_014",
+          "expected": "Turn off the lights",
+          "actual": "Turn off the lights.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 304.7105890000239,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_015",
+          "expected": "Pause",
+          "actual": "Post.",
+          "exact": false,
+          "wer": 1.0,
+          "latency_ms": 618.8082699663937,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_016",
+          "expected": "Pause the music",
+          "actual": "Pause the music.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 315.06328302202746,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_017",
+          "expected": "Pause this song",
+          "actual": "Pause this song",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 303.6410359782167,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_018",
+          "expected": "Stop music",
+          "actual": "Stop music!",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 334.34192003915086,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_019",
+          "expected": "Stop playing music",
+          "actual": "Stop playing music!",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 338.1815840257332,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_020",
+          "expected": "Turn off the music",
+          "actual": "Turn off the music.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 345.2478169929236,
+          "audio_s": 2.56
+        },
+        {
+          "id": "real_021",
+          "expected": "Next song",
+          "actual": "Next song.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 311.83221301762387,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_022",
+          "expected": "Skip song",
+          "actual": "Skip song",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 295.278163976036,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_023",
+          "expected": "Play next song",
+          "actual": "Play next song.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 317.101487016771,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_024",
+          "expected": "Volume up",
+          "actual": "Volume up.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 293.1413780315779,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_025",
+          "expected": "Increase the volume",
+          "actual": "Increase the volume.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 328.8155509508215,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_026",
+          "expected": "Turn the volume up",
+          "actual": "Turn the volume up",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 321.72959798481315,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_027",
+          "expected": "Volume down",
+          "actual": "Volume down.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 318.3028530329466,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_028",
+          "expected": "Lower the volume",
+          "actual": "Lower the volume.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 320.2195049962029,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_029",
+          "expected": "Turn the volume down",
+          "actual": "Turn the volume down.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 324.1386400186457,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_030",
+          "expected": "Call",
+          "actual": "Call",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 309.0171219664626,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_031",
+          "expected": "Make a call",
+          "actual": "Make a call.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 299.3711340241134,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_032",
+          "expected": "Make a phone call",
+          "actual": "Make a phone call",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 294.9536279775202,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_033",
+          "expected": "Message",
+          "actual": "message",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 453.0395510373637,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_034",
+          "expected": "Send a message",
+          "actual": "Send a message.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 328.8245110306889,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_035",
+          "expected": "Send my message",
+          "actual": "Send my message.",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 340.4286029981449,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_036",
+          "expected": "Reminders",
+          "actual": "Reminders",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 314.25317598041147,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_037",
+          "expected": "Show my reminders",
+          "actual": "Show me reminders",
+          "exact": false,
+          "wer": 0.3333333333333333,
+          "latency_ms": 318.9096570131369,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_038",
+          "expected": "List my reminders",
+          "actual": "list my reminders",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 338.05531199323013,
+          "audio_s": 5.0
+        },
+        {
+          "id": "real_039",
+          "expected": "Timer 10 seconds",
+          "actual": "Timer 10 seconds",
+          "exact": true,
+          "wer": 0.0,
+          "latency_ms": 342.6530709839426,
+          "audio_s": 5.0
+        }
+      ]
+    }
+  ]
+}

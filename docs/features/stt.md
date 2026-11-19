@@ -59,7 +59,7 @@ Results:
 | Parakeet TDT 0.6B v2 | 100% | 0.000 | 170 ms | 198 ms | 92.5% | 0.025 | 245 ms | 260 ms | 0.049 |
 | faster-whisper base.en | 100% | 0.000 | 313 ms | 338 ms | 92.5% | 0.058 | 319 ms | 347 ms | 0.067 |
 
-Parakeet is faster on both sets and has lower WER on the real human clips. The
+Raw per-clip results are in [stt-benchmark-tts.json](stt-benchmark-tts.json) and [stt-benchmark-real.json](stt-benchmark-real.json). Parakeet is faster on both sets and has lower WER on the real human clips. The
 exact-match rate is equal because both make one lexical error on different
 clips: Parakeet heard "Pause the song" for "Pause this song"; Whisper hallucinated
 "Bye" for "Time" and "Post" for "Pause".
