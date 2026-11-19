@@ -11,7 +11,7 @@
         "ready": true,
         "device": "cpu",
         "compute_type": "int8",
-        "model": "/home/fer/.local/share/keyboard-killer/models/parakeet-tdt-0.6b-v2",
+        "model": "<data>/models/parakeet-tdt-0.6b-v2",
         "detail": "App-owned pinned model."
       },
       "samples": 40,
