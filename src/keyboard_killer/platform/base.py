@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from keyboard_killer.config.paths import AppPaths
+if TYPE_CHECKING:
+    from keyboard_killer.config.paths import AppPaths
 
 
 class NotSupportedError(RuntimeError):
@@ -60,6 +61,38 @@ class CapabilityInfo:
     @property
     def available(self) -> bool:
         return self.status is CapabilityStatus.AVAILABLE
+
+
+@dataclass(frozen=True)
+class MonitorInfo:
+    """Single logical monitor in the desktop layout."""
+
+    connector: str
+    x: int
+    y: int
+    width: int
+    height: int
+    physical_width: int
+    physical_height: int
+    scale: float
+    is_primary: bool
+
+
+@dataclass(frozen=True)
+class DisplayLayout:
+    """Combined multi-monitor desktop bounding box and active monitors."""
+
+    monitors: tuple[MonitorInfo, ...]
+    total_width: int
+    total_height: int
+    layout_mode: int = 1
+
+    @property
+    def primary(self) -> MonitorInfo:
+        for mon in self.monitors:
+            if mon.is_primary:
+                return mon
+        return self.monitors[0]
 
 
 @dataclass(frozen=True)

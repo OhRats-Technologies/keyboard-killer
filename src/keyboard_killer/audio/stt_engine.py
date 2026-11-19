@@ -1,21 +1,16 @@
-"""CUDA faster-whisper STT engine, evdev PTT monitor, and unified PipeWire audio loop."""
+"""faster-whisper STT engine and the unified PortAudio capture loop."""
 
 from __future__ import annotations
 
 import ctypes
-import glob
 import logging
 import os
-import selectors
 import threading
-import time
 from collections import deque
 from collections.abc import Callable
-from pathlib import Path
 
 import numpy as np
 import sounddevice as sd
-from evdev import InputDevice, ecodes
 
 from keyboard_killer.audio.pop_detector import PopEvalResult, PopTriggerStateMachine
 
@@ -44,17 +39,6 @@ def _preload_cuda_libs() -> None:
                     loaded_names.add(lib_name)
                 except OSError as exc:
                     logger.debug("Could not preload %s: %s", candidate, exc)
-
-
-def resolve_hotkey_code(key_name: str) -> int:
-    """Resolve an evdev key name (e.g. `KEY_RIGHTCTRL`, `BTN_SIDE`) to its numeric code."""
-    normalized = key_name.strip().upper()
-    if not normalized.startswith(("KEY_", "BTN_")):
-        normalized = f"KEY_{normalized}"
-    code = getattr(ecodes, normalized, None)
-    if code is None:
-        raise ValueError(f"Unknown evdev hotkey name: {key_name!r}")
-    return int(code)
 
 
 class WhisperSTTEngine:
@@ -105,81 +89,6 @@ class WhisperSTTEngine:
             condition_on_previous_text=False,
         )
         return " ".join(seg.text.strip() for seg in segments if seg.text.strip()).strip()
-
-
-class EvdevHotkeyMonitor:
-    """Monitors physical `/dev/input/event*` devices for a Wayland-agnostic PTT key."""
-
-    def __init__(
-        self,
-        hotkey_code: int,
-        on_press: Callable[[], None],
-        on_release: Callable[[], None],
-    ) -> None:
-        self.hotkey_code = int(hotkey_code)
-        self._on_press = on_press
-        self._on_release = on_release
-        self._devices: list[InputDevice] = []
-        self._stop_event = threading.Event()
-        self._thread = threading.Thread(target=self._run, name="evdev-ptt-monitor", daemon=True)
-        self._pressed = False
-
-    def start(self) -> int:
-        """Open matching readable input devices and start listening; returns device count."""
-        for path in sorted(glob.glob("/dev/input/event*")):
-            if not os.access(path, os.R_OK):
-                continue
-            try:
-                dev = InputDevice(path)
-            except OSError:
-                continue
-            if dev.name.startswith("keyboard-killer"):
-                dev.close()
-                continue
-            caps = dev.capabilities()
-            keys = caps.get(ecodes.EV_KEY, [])
-            if self.hotkey_code in keys:
-                self._devices.append(dev)
-            else:
-                dev.close()
-
-        if self._devices:
-            self._thread.start()
-        return len(self._devices)
-
-    def _run(self) -> None:
-        sel = selectors.DefaultSelector()
-        for dev in self._devices:
-            sel.register(dev, selectors.EVENT_READ)
-        try:
-            while not self._stop_event.is_set():
-                events = sel.select(timeout=0.1)
-                for key, _ in events:
-                    dev: InputDevice = key.fileobj  # type: ignore[assignment]
-                    try:
-                        for ev in dev.read():
-                            if ev.type == ecodes.EV_KEY and ev.code == self.hotkey_code:
-                                if ev.value == 1 and not self._pressed:
-                                    self._pressed = True
-                                    self._on_press()
-                                elif ev.value == 0 and self._pressed:
-                                    self._pressed = False
-                                    self._on_release()
-                    except OSError:
-                        continue
-        finally:
-            sel.close()
-
-    def stop(self) -> None:
-        self._stop_event.set()
-        if self._thread.is_alive():
-            self._thread.join(timeout=1.0)
-        for dev in self._devices:
-            try:
-                dev.close()
-            except OSError:
-                pass
-        self._devices.clear()
 
 
 class UnifiedAudioService:

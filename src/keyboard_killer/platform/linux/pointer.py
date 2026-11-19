@@ -1,4 +1,4 @@
-"""Split /dev/uinput virtual devices for GNOME Wayland / libinput compatibility."""
+"""Linux pointer backend built on /dev/uinput virtual devices."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import shutil
 import subprocess
 import threading
 import time
-from typing import Protocol
 
 from evdev import AbsInfo, UInput, ecodes
 
@@ -123,77 +122,6 @@ _COMMON_KEYS: list[int] = sorted(
         *(code for code, _ in _CHAR_KEYMAP.values()),
     }
 )
-
-
-class PointerBackend(Protocol):
-    """Protocol implemented by UInputManager and DryRunPointerBackend."""
-
-    def move_absolute(self, x: float, y: float) -> None: ...
-    def move_relative(self, dx: float, dy: float) -> None: ...
-    def click(self, button: int = ecodes.BTN_LEFT) -> None: ...
-    def double_click(self, button: int = ecodes.BTN_LEFT) -> None: ...
-    def scroll(self, dy: int = 0, dx: int = 0) -> None: ...
-    def key_combo(self, *keycodes: int) -> None: ...
-    def type_text(self, text: str) -> None: ...
-    def close(self) -> None: ...
-
-
-class DryRunPointerBackend:
-    """No-op pointer backend when running diagnostics without /dev/uinput."""
-
-    def __init__(self, screen_width: int, screen_height: int) -> None:
-        self.screen_width = screen_width
-        self.screen_height = screen_height
-        self.last_abs: tuple[float, float] | None = None
-        self.rel_accum: tuple[float, float] = (0.0, 0.0)
-        self.clicks: list[int] = []
-        self.typed_texts: list[str] = []
-        self.combos: list[tuple[int, ...]] = []
-        self.hold_taps: list[tuple[int, int, int]] = []
-        self.scrolls: list[tuple[int, int]] = []
-
-    def move_absolute(self, x: float, y: float) -> None:
-        self.last_abs = (
-            max(0.0, min(float(self.screen_width - 1), x)),
-            max(0.0, min(float(self.screen_height - 1), y)),
-        )
-
-    def move_relative(self, dx: float, dy: float) -> None:
-        self.rel_accum = (self.rel_accum[0] + dx, self.rel_accum[1] + dy)
-
-    def click(self, button: int = ecodes.BTN_LEFT) -> None:
-        self.clicks.append(button)
-        logger.debug("Dry-run click: %s", button)
-
-    def double_click(self, button: int = ecodes.BTN_LEFT) -> None:
-        self.click(button)
-        self.click(button)
-
-    def scroll(self, dy: int = 0, dx: int = 0) -> None:
-        self.scrolls.append((dx, dy))
-        logger.debug("Dry-run scroll: dx=%s dy=%s", dx, dy)
-
-    def key_combo(self, *keycodes: int) -> None:
-        self.combos.append(keycodes)
-        logger.debug("Dry-run key_combo: %s", keycodes)
-
-    def hold_and_tap(
-        self,
-        hold_key: int,
-        tap_key: int,
-        count: int = 1,
-        tap_delay: float = 0.035,
-    ) -> None:
-        self.hold_taps.append((hold_key, tap_key, count))
-        self.combos.append((hold_key, *(tap_key,) * max(1, count)))
-        logger.debug("Dry-run hold_and_tap: hold=%s tap=%s count=%s", hold_key, tap_key, count)
-
-    def type_text(self, text: str) -> None:
-        self.typed_texts.append(text)
-        logger.debug("Dry-run type_text: %r", text)
-
-    def close(self) -> None:
-        pass
 
 
 class UInputManager:

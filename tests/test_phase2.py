@@ -6,8 +6,8 @@ import numpy as np
 from evdev import ecodes
 
 from keyboard_killer.audio.pop_detector import PopTriggerStateMachine
-from keyboard_killer.audio.stt_engine import resolve_hotkey_code
-from keyboard_killer.input.uinput_device import DryRunPointerBackend
+from keyboard_killer.platform.linux.hotkeys import resolve_hotkey_code
+from keyboard_killer.input.pointer import DryRunPointerBackend
 from keyboard_killer.ipc.state import FLAG_FACE_DETECTED, SharedGazeReader, SharedGazeWriter
 from keyboard_killer.router.dispatcher import VoiceCommandRouter
 from keyboard_killer.router.llm_agent import LLMAgent, _strip_code_fences

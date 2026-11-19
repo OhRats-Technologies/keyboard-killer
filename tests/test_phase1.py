@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from keyboard_killer.config import DisplayLayout, MonitorInfo, parse_mutter_display_state
-from keyboard_killer.input.uinput_device import DryRunPointerBackend
+from keyboard_killer.input.pointer import DryRunPointerBackend
 from keyboard_killer.ipc.state import (
     FLAG_BLINKING,
     FLAG_FACE_DETECTED,

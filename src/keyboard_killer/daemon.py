@@ -14,19 +14,12 @@ from rich.console import Console
 
 from keyboard_killer.audio.active_listener import ActiveVoiceListener
 from keyboard_killer.audio.pop_detector import PopTriggerStateMachine
-from keyboard_killer.audio.stt_engine import (
-    EvdevHotkeyMonitor,
-    UnifiedAudioService,
-    WhisperSTTEngine,
-    resolve_hotkey_code,
-)
+from keyboard_killer.audio.stt_engine import UnifiedAudioService, WhisperSTTEngine
 from keyboard_killer.config import AppConfig, get_display_layout
-from keyboard_killer.input.evdev_mouse_listener import EvdevMouseClickHarvester
-from keyboard_killer.input.uinput_device import (
-    DryRunPointerBackend,
-    PointerBackend,
-    UInputManager,
-)
+from keyboard_killer.input.click_harvest import EvdevMouseClickHarvester
+from keyboard_killer.input.pointer import DryRunPointerBackend, PointerBackend
+from keyboard_killer.platform.linux.hotkeys import EvdevHotkeyMonitor, resolve_hotkey_code
+from keyboard_killer.platform.linux.pointer import UInputManager
 from keyboard_killer.ipc.firefox_bridge import FirefoxDOMBridge
 from keyboard_killer.ipc.state import FLAG_FACE_DETECTED, SharedGazeReader
 from keyboard_killer.router.dispatcher import VoiceCommandRouter
@@ -41,9 +34,10 @@ from keyboard_killer.vision.cursor_gimbal import (
     GimbalStepResult,
     run_vision_loop,
 )
-from keyboard_killer.vision.desktop_atspi import LinuxDesktopAccessibilityBridge
+from keyboard_killer.platform.linux.accessibility import LinuxDesktopAccessibilityBridge
+from keyboard_killer.platform.linux.screen import monitor_at_point
 from keyboard_killer.vision.online_learner import OnlineGazeLearner
-from keyboard_killer.vision.ui_detector import GazeUIDetector, monitor_at_point
+from keyboard_killer.vision.ui_detector import GazeUIDetector
 
 
 def run_combined_daemon(

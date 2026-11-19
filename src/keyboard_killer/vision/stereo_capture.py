@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from keyboard_killer.vision.landmarks import CameraObservation, FaceFeatureExtractor
-from keyboard_killer.vision.v4l2_config import CameraLockReport, open_locked_capture
+from keyboard_killer.platform.linux.v4l2 import CameraLockReport, open_locked_capture
 
 
 @dataclass(frozen=True)

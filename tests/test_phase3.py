@@ -16,7 +16,7 @@ from keyboard_killer.audio.active_listener import (
     _SpeechVetoedPopDetector,
 )
 from keyboard_killer.config import DisplayLayout, MonitorInfo
-from keyboard_killer.input.uinput_device import DryRunPointerBackend
+from keyboard_killer.input.pointer import DryRunPointerBackend
 from keyboard_killer.ipc.firefox_bridge import FirefoxDOMBridge
 from keyboard_killer.router.dispatcher import VoiceCommandRouter
 from keyboard_killer.router.gaze_vlm_clicker import (
@@ -1181,7 +1181,7 @@ def test_firefox_dom_number_word_matching() -> None:
 
 
 def test_desktop_atspi_matching_and_non_browser_routing() -> None:
-    from keyboard_killer.vision.desktop_atspi import (
+    from keyboard_killer.platform.linux.accessibility import (
         DesktopAccessibleNode,
         LinuxDesktopAccessibilityBridge,
     )
@@ -1465,7 +1465,7 @@ def test_pose_invariant_rbf_and_online_gaze_learner(tmp_path) -> None:
 
 
 def test_wayland_cursor_sprite_diff_and_scroll_handler() -> None:
-    from keyboard_killer.input.evdev_mouse_listener import WaylandCursorPositionResolver
+    from keyboard_killer.input.click_harvest import WaylandCursorPositionResolver
     from keyboard_killer.router.scroll_handler import parse_voice_scroll_command
 
     # 1. Cursor sprite diff finds hardware cursor hotspot on synthetic frame pair

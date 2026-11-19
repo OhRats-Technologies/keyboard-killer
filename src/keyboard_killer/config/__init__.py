@@ -12,12 +12,10 @@ from keyboard_killer.config.schema import (
     DEFAULT_LANDMARKER_MODEL_PATH,
     FACE_LANDMARKER_URL,
     AppConfig,
-    DisplayLayout,
-    MonitorInfo,
-    discover_v4l_by_id,
-    get_display_layout,
-    parse_mutter_display_state,
 )
+from keyboard_killer.platform.base import DisplayLayout, MonitorInfo
+from keyboard_killer.platform.linux.cameras import discover_v4l_by_id
+from keyboard_killer.platform.linux.display import get_display_layout, parse_mutter_display_state
 
 __all__ = [
     "CACHE_DIR",

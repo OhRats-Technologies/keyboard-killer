@@ -11,7 +11,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from keyboard_killer.config import AppConfig, get_display_layout
-from keyboard_killer.input.uinput_device import DryRunPointerBackend, PointerBackend, UInputManager
+from keyboard_killer.input.pointer import DryRunPointerBackend, PointerBackend
+from keyboard_killer.platform.linux.pointer import UInputManager
 from keyboard_killer.ipc.state import (
     FLAG_BLINKING,
     FLAG_FACE_DETECTED,

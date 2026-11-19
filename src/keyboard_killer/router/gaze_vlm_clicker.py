@@ -18,12 +18,12 @@ from rapidfuzz import fuzz
 
 from keyboard_killer.config import DisplayLayout
 from keyboard_killer.ipc.firefox_bridge import DOMCandidate, FirefoxDOMBridge
-from keyboard_killer.vision.desktop_atspi import LinuxDesktopAccessibilityBridge
+from keyboard_killer.platform.linux.accessibility import LinuxDesktopAccessibilityBridge
+from keyboard_killer.platform.linux.screen import monitor_at_point
 from keyboard_killer.vision.ui_detector import (
     GazeROISnapshot,
     GazeUIDetector,
     UIBoundingBox,
-    monitor_at_point,
 )
 
 logger = logging.getLogger(__name__)

@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 from evdev import ecodes
 
-from keyboard_killer.input.uinput_device import DryRunPointerBackend, PointerBackend
+from keyboard_killer.input.pointer import DryRunPointerBackend, PointerBackend
 from keyboard_killer.ipc.firefox_bridge import FirefoxDOMBridge
 from keyboard_killer.ipc.state import SharedGazeReader
 from keyboard_killer.router.command_splitter import execute_compound_voice_commands
