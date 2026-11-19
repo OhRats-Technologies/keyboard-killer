@@ -624,6 +624,23 @@ def run_voice(
     )
 
 
+@app.command("doctor")
+def doctor(
+    json_output: bool = typer.Option(False, "--json", help="Emit one JSON document for support/UI"),
+    no_provider_check: bool = typer.Option(
+        False, help="Skip provider network/process probes (keeps STT and capability checks)"
+    ),
+) -> None:
+    """Report paths, cameras, audio, permissions, STT, providers, and capabilities."""
+    from keyboard_killer.diagnostics.doctor import collect_doctor, format_text
+
+    report = collect_doctor(check_providers=not no_provider_check)
+    if json_output:
+        typer.echo(report.to_json())
+    else:
+        console.print(format_text(report))
+
+
 providers_app = typer.Typer(
     name="providers",
     help="Bring-your-own AI providers: OpenAI-compatible, Ollama, and ACP agents.",
