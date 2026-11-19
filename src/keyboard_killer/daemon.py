@@ -24,7 +24,7 @@ from keyboard_killer.ipc.firefox_bridge import FirefoxDOMBridge
 from keyboard_killer.ipc.state import FLAG_FACE_DETECTED, SharedGazeReader
 from keyboard_killer.router.dispatcher import VoiceCommandRouter
 from keyboard_killer.router.gaze_vlm_clicker import GazeVLMClicker
-from keyboard_killer.router.llm_agent import LLMAgent
+from keyboard_killer.routing.llm import LLMAgent
 from keyboard_killer.voice.stt.factory import create_stt_engine
 from keyboard_killer.vision.calibrator import (
     StereoGazeModel,

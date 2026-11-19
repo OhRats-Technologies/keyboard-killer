@@ -17,7 +17,7 @@ from keyboard_killer.ipc.firefox_bridge import FirefoxDOMBridge
 from keyboard_killer.ipc.state import SharedGazeReader
 from keyboard_killer.router.command_splitter import execute_compound_voice_commands
 from keyboard_killer.router.gaze_vlm_clicker import GazeVLMClicker, parse_voice_click_command
-from keyboard_killer.router.llm_agent import LLMAgent
+from keyboard_killer.routing.llm import LLMAgent
 from keyboard_killer.router.scroll_handler import parse_voice_scroll_command
 
 logger = logging.getLogger(__name__)

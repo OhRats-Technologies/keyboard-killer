@@ -10,7 +10,7 @@ from keyboard_killer.platform.linux.hotkeys import resolve_hotkey_code
 from keyboard_killer.input.pointer import DryRunPointerBackend
 from keyboard_killer.ipc.state import FLAG_FACE_DETECTED, SharedGazeReader, SharedGazeWriter
 from keyboard_killer.router.dispatcher import VoiceCommandRouter
-from keyboard_killer.router.llm_agent import LLMAgent, _strip_code_fences
+from keyboard_killer.routing.llm import LLMAgent, _strip_code_fences
 
 
 def _quiet_chunk(n: int = 256, amp: float = 0.002) -> np.ndarray:
