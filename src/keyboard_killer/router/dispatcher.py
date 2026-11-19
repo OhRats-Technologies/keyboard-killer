@@ -312,25 +312,17 @@ class VoiceCommandRouter:
         )
 
     def _cycle_next_window(self) -> None:
-        now = time.monotonic()
-        if (now - self._window_cycle_last_t) > 12.0:
-            self._window_cycle_step = 0
-        self._window_cycle_step = (self._window_cycle_step % 6) + 1
-        self._window_cycle_last_t = now
-        if hasattr(self.pointer, "hold_and_tap"):
-            self.pointer.hold_and_tap(ecodes.KEY_LEFTALT, ecodes.KEY_TAB, count=self._window_cycle_step)
-        else:
-            self.pointer.key_combo(ecodes.KEY_LEFTALT, ecodes.KEY_ESC)
+        """Rotate through ALL open windows without MRU ping-pong.
+
+        In an MRU list [A, B, C, D], picking index 1 (Alt+Escape / Alt+Tab) swaps A <-> B forever,
+        whereas picking the tail (Shift+Alt+Escape: cycle-windows-backward) rotates the entire
+        ring [D, A, B, C] -> [C, D, A, B] -> [B, C, D, A] -> [A, B, C, D], visiting every window!
+        """
+        self.pointer.key_combo(ecodes.KEY_LEFTALT, ecodes.KEY_LEFTSHIFT, ecodes.KEY_ESC)
 
     def _cycle_prev_window(self) -> None:
-        now = time.monotonic()
-        if self._window_cycle_step > 1 and (now - self._window_cycle_last_t) <= 12.0:
-            self._window_cycle_step -= 1
-            self._window_cycle_last_t = now
-            self.pointer.key_combo(ecodes.KEY_LEFTALT, ecodes.KEY_TAB)
-            return
-        self._window_cycle_step = 0
-        self.pointer.key_combo(ecodes.KEY_LEFTALT, ecodes.KEY_LEFTSHIFT, ecodes.KEY_TAB)
+        """Jump back to the immediately preceding window in MRU order (Alt+Escape)."""
+        self.pointer.key_combo(ecodes.KEY_LEFTALT, ecodes.KEY_ESC)
 
     _APP_SEARCH_ALIASES: dict[str, str] = {
         "vscode": "visual studio code",
@@ -393,6 +385,20 @@ class VoiceCommandRouter:
             if target_q is None:
                 self.pointer.key_combo(ecodes.KEY_LEFTCTRL, ecodes.KEY_T)
                 return DispatchResult("deterministic", raw, "new_tab")
+
+        # 0.5. Close active OS window ("close window", "close this window", "close app")
+        if norm in (
+            "close window",
+            "close this window",
+            "close the window",
+            "close app",
+            "close this app",
+            "close the app",
+            "close application",
+            "alt f4",
+        ):
+            self.pointer.key_combo(ecodes.KEY_LEFTALT, ecodes.KEY_F4)
+            return DispatchResult("deterministic", raw, "close_window")
 
         # 1. Explicit OS app/window focus: "switch window to X", "focus X", "open app X", or "antigravity window"
         m_os = re.match(

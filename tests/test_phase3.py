@@ -792,23 +792,22 @@ def test_os_window_and_browser_tab_switching() -> None:
     tb = _FakeTabBridge()
     router = VoiceCommandRouter(pointer=ptr, firefox_bridge=tb)  # type: ignore[arg-type]
 
-    # Progressive MRU window cycling: 1st -> 1 Tab, 2nd -> 2 Tabs, 3rd -> 3 Tabs (reaches window C, D)
+    # Full MRU ring rotation via Shift+Alt+Escape (visits every open window without A<->B ping-pong)
     assert router.dispatch("next window").detail == "os_window_next"
-    assert ptr.hold_taps[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_TAB, 1)
+    assert ptr.combos[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_LEFTSHIFT, ecodes.KEY_ESC)
 
     assert router.dispatch("next window").detail == "os_window_next"
-    assert ptr.hold_taps[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_TAB, 2)
+    assert ptr.combos[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_LEFTSHIFT, ecodes.KEY_ESC)
 
     assert router.dispatch("switch tab").detail == "os_window_next"
-    assert ptr.hold_taps[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_TAB, 3)
+    assert ptr.combos[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_LEFTSHIFT, ecodes.KEY_ESC)
 
     assert router.dispatch("previous window").detail == "os_window_prev"
-    assert ptr.combos[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_TAB)
+    assert ptr.combos[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_ESC)
 
-    # Other command resets cycle step back to 1 on next "next window"
     router.dispatch("scroll down")
     assert router.dispatch("next window").detail == "os_window_next"
-    assert ptr.hold_taps[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_TAB, 1)
+    assert ptr.combos[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_LEFTSHIFT, ecodes.KEY_ESC)
 
     assert router.dispatch("alt tab").detail == "os_alt_tab"
     assert ptr.combos[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_TAB)
@@ -821,6 +820,11 @@ def test_os_window_and_browser_tab_switching() -> None:
 
     assert router.dispatch("next workspace").detail == "os_workspace_next"
     assert ptr.combos[-1] == (ecodes.KEY_LEFTCTRL, ecodes.KEY_LEFTALT, ecodes.KEY_RIGHT)
+
+    assert router.dispatch("close window").detail == "close_window"
+    assert ptr.combos[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_F4)
+    assert router.dispatch("close this app").detail == "close_window"
+    assert ptr.combos[-1] == (ecodes.KEY_LEFTALT, ecodes.KEY_F4)
 
     # Named OS app focus via "<app> window" and "switch to <app>"
     for spoken, expected_query in (

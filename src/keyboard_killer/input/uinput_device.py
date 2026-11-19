@@ -117,6 +117,7 @@ _COMMON_KEYS: list[int] = sorted(
         ecodes.KEY_RIGHTSHIFT,
         ecodes.KEY_LEFTALT,
         ecodes.KEY_LEFTMETA,
+        ecodes.KEY_F4,
         ecodes.KEY_PLAYPAUSE,
         ecodes.KEY_MUTE,
         *(code for code, _ in _CHAR_KEYMAP.values()),
@@ -330,15 +331,25 @@ class UInputManager:
                 self._rel_dev.syn()
 
     def key_combo(self, *keycodes: int) -> None:
-        """Press all keycodes in order, then release in reverse order."""
+        """Press modifier keys first, tap the final key, then release in reverse order."""
+        if not keycodes:
+            return
         with self._io_lock:
-            for code in keycodes:
-                self._rel_dev.write(ecodes.EV_KEY, code, 1)
+            if len(keycodes) > 1:
+                for code in keycodes[:-1]:
+                    self._rel_dev.write(ecodes.EV_KEY, code, 1)
+                self._rel_dev.syn()
+                time.sleep(0.015)
+            self._rel_dev.write(ecodes.EV_KEY, keycodes[-1], 1)
             self._rel_dev.syn()
-            time.sleep(0.01)
-            for code in reversed(keycodes):
-                self._rel_dev.write(ecodes.EV_KEY, code, 0)
+            time.sleep(0.02)
+            self._rel_dev.write(ecodes.EV_KEY, keycodes[-1], 0)
             self._rel_dev.syn()
+            if len(keycodes) > 1:
+                time.sleep(0.01)
+                for code in reversed(keycodes[:-1]):
+                    self._rel_dev.write(ecodes.EV_KEY, code, 0)
+                self._rel_dev.syn()
 
     def hold_and_tap(
         self,
