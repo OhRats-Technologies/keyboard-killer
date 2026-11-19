@@ -1,6 +1,14 @@
 # Platform Matrix
 
-**Status:** research. Linux is the only implemented host today; macOS and Windows are targets. API names are the intended seams, not implemented code.
+**Status:** implemented on Linux; macOS and Windows are capability stubs. API names are the intended seams. Linux rows are exercised by unit/contract tests and `doctor`; hardware-only rows are marked untested.
+
+## Implementation status
+
+| Host | Status | Notes |
+|---|---|---|
+| Linux | **Implemented** | uinput, evdev PTT, V4L2 discovery, PortAudio, GNOME/portal capture, AT-SPI, Qt tray, XDG autostart, `.deb`/AppImage |
+| macOS | **Stub** | `platform/macos/*` returns `unsupported_platform`; pointer/hotkey/camera/screen/AX/TCC are not implemented |
+| Windows | **Stub** | `platform/windows/*` returns `unsupported_platform`; SendInput/hook/MF/WGC/UIA are not implemented |
 
 ## Capability matrix
 
@@ -12,7 +20,7 @@
 | Cameras | V4L2 via OpenCV; `/dev/v4l/by-id` | AVFoundation | Media Foundation | `CameraSource` |
 | Camera controls | V4L2 exposure/gain ioctls | AVFoundation exposure/focus | Media Foundation camera controls | `CameraControls` |
 | Mic/audio | PipeWire/PulseAudio via PortAudio | CoreAudio via PortAudio | WASAPI via PortAudio | `AudioSource` |
-| STT runtime | ONNX Runtime CPU int8; CUDA opt-in | ONNX Runtime CPU (CoreML untested) | ONNX Runtime CPU; DirectML/CUDA opt-in | `SttEngine` |
+| STT runtime | ONNX Runtime CPU int8; CUDA opt-in (implemented) | not implemented (stub) | not implemented (stub) | `SttEngine` |
 | Screen capture | GNOME Shell D-Bus / XDG portal | ScreenCaptureKit | Windows.Graphics.Capture / DXGI | `ScreenSource` |
 | Accessibility tree | AT-SPI2 | `AXUIElement` | UI Automation | `AccessibilityBridge` |
 | Tray/menu bar | StatusNotifierItem/AppIndicator | `NSStatusItem` | `Shell_NotifyIcon` | `Tray` |
@@ -39,13 +47,13 @@
 
 ## Linux notes
 
-- **Input:** uinput virtual devices are the current path and should stay the default. Keep `DryRunPointerBackend` for tests and `--dry-run`.
+- **Input:** uinput virtual devices are the current path and stay the default. `DryRunPointerBackend` is used by tests and `--dry-run`. `/dev/uinput` is writable on this machine, but synthetic clicks were not exercised end-to-end.
 - **Hotkeys:** evdev is global and works on Wayland, but requires read access to `/dev/input/event*`. The installer should explain this once; the UI should show a permission row, not a terminal warning.
-- **Cameras:** `/dev/v4l/by-id` is the stable identity. Exposure/gain locking is V4L2-specific; expose it as `CameraControls`, with unsupported controls reported rather than fatal.
-- **Screen:** try `org.gnome.Shell.Screenshot.ScreenshotArea`, fall back to `org.freedesktop.portal.Screenshot`; on denial, disable click-by-name with a permission row. Wayland capture is the runtime gate.
+- **Cameras:** `/dev/v4l/by-id` is the stable identity and the onboarding picker uses it. One camera was present for this session; the two-camera stereo path, calibration, and face-found previews were not exercised. Exposure/gain locking remains V4L2-specific.
+- **Screen:** capture tries `org.gnome.Shell.Screenshot.ScreenshotArea` then the XDG portal; `doctor` reports screen capability and permission. A denied portal still surfaces at click time (D6 partial). This session is KDE Wayland, so GNOME capture was not exercised.
 - **Accessibility:** AT-SPI worker is optional; if unavailable, the visual tiers still work and the capability report says so.
 - **Overlay:** the hard case. A normal Wayland window cannot be made click-through with a portable API. Options: GNOME Shell extension (native, GNOME-versioned), XWayland input shape (works under XWayland, not native Wayland), or tray/toast only. See D3.
-- **Packaging:** `.deb` and AppImage; include the udev rule; a `.desktop` file; optional systemd user unit. Flatpak is a later decision because the sandbox complicates uinput and portals.
+- **Packaging:** a self-contained `.deb` (675 MB, relocatable Python + venv) and AppImage (561 MB) were built with the udev rule, `.desktop`, and optional systemd user unit. Built on Arch; installation on Ubuntu/Debian and FUSE execution were not tested (AppImage was verified with `APPIMAGE_EXTRACT_AND_RUN=1`). Flatpak is a later decision.
 
 ## macOS notes
 

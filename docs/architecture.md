@@ -1,6 +1,6 @@
 # Architecture and Product Organization
 
-**Status:** target design / research, revised 2026-11-19 for the user-friendly Hex-style direction, Parakeet STT, and bring-your-own LLM (OpenAI-compatible and ACP). The current checkout is a Linux-first CLI daemon; this document describes how to turn it into a cross-platform product with a visible surface, without rewriting the vision/voice core.
+**Status:** implemented Linux design (2026-11-19). The shared engine, platform seams, STT/provider layer, diagnostics, PySide6 shell, and Linux packaging now exist. Windows and macOS are capability stubs; the vision/voice core was not rewritten. This document records the target organization and what actually shipped.
 
 **Reference:** `anomalyco/hex` @ `6435633` (read-only). Borrow the organization and the outcomes, not the code, the visual identity, or the Rust/Rune stack.
 
@@ -137,17 +137,18 @@ Use one `AppPaths` service with four roots:
 - Provider-owned models stay in the provider's store; `models/providers.json` records status, not files.
 - Migrate the current `~/.config/keyboard-killer/config.json` and `stereo_calib.json` into the new layout once; never delete the old files.
 - Keep models in **data**, not cache: they are user assets that survive cache clearing.
-- Keep the MediaPipe landmarker in **cache**: it is re-downloadable.
+- Keep the MediaPipe landmarker in **cache**: it is re-downloadable. The Parakeet ONNX files are **data** with a verified receipt.
 - Windows: keep large models/logs in `LocalAppData`, not roaming `AppData`.
 
-### Proposed folders
+### Shipped folders
 
 ```
 <data>/keyboard-killer/
   models/
-    <asset>.gguf
-    <asset>.gguf.partial
-    <asset>.gguf.verified.json
+    <asset-id>/
+      <pinned files>
+      <file>.partial
+      receipt.json
     providers.json
     custom/
   history/
@@ -229,34 +230,41 @@ Welcome
 - Never skip camera/calibration when vision is enabled; optional steps get a visible Skip.
 - A denied permission never dead-ends the whole flow; it offers Open Settings and marks the step unresolved.
 
-## 8. Migration order
+## 8. Migration order and status
 
 Keep behavior stable; extract seams before adding surfaces.
 
-1. **Paths and capabilities.** Add `config/paths.py`, `platform/base.py`, `platform/capabilities.py`; route existing config/cache access through them.
-2. **Linux behind protocols.** Move uinput, evdev, V4L2, AT-SPI, portal/Shell, Mutter layout behind `platform/linux/`; keep the CLI and daemon behavior identical.
-3. **Models, providers, and diagnostics.** Add `models/` (STT catalog/downloader, a `Provider` interface with `openai_compat`, `ollama`, then `acp`) and `diagnostics/doctor.py`. Replace the native Gemini path in `llm_agent.py`. Swap STT to Parakeet behind the existing engine interface. Surface status in the CLI first.
-4. **UI shell.** Add the main window, tray, settings, history, and onboarding around the existing daemon; do not rewrite the engine.
-5. **Second OS.** Add Windows or macOS one capability at a time (pointer → hotkey → camera → audio → screen → accessibility → permissions).
-6. **Third OS and packaging.** Complete the matrix, installers, signing, CI, and the first-run flow.
+| Step | Status | Evidence |
+|---|---|---|
+| 1. Paths and capabilities | **Done** | `config/paths.py`, `config/migrations.py`, `platform/base.py`, `platform/capabilities.py`; `KEYBOARD_KILLER_HOME`; migration copies and keeps legacy files |
+| 2. Linux behind protocols | **Done** | uinput, evdev, V4L2, AT-SPI, screen, Mutter layout under `platform/linux/`; CLI/daemon behavior preserved |
+| 3. Models, providers, diagnostics | **Done** | Parakeet + pinned downloader + Whisper fallback; provider adapters; replaced native Gemini; `doctor`/`--json` |
+| 4. UI shell | **Done for Linux** | main window, tray, onboarding, settings, history, theme, D3 Wayland fallback; headless tests and light/dark goldens |
+| 5. Second OS | **Stubs only** | Windows/macOS capability reports and Pointer/Hotkey/Camera/Screen/Accessibility/Permission/Tray/Autostart stubs raise `NotSupportedError` |
+| 6. Third OS and packaging | **Linux done; others not started** | `.deb` and AppImage built and smoke-tested; no signing/notarization |
 
-Do not combine a file move with a behavior change in the same review.
+The model/provider split and role bindings are in D2/D9/D10 and shipped. The remaining migration is UI-to-daemon lifecycle integration (the UI currently starts the CLI daemon as a child) and the OS ports.
+
+Do not combine a file move with a behavior change in the same review; commits `9053fca`, `5d7b684`, `ef6721b`, `b373998`, and the packaging commit follow that rule.
 
 ## 9. Testing, diagnostics, packaging
 
 - **Unit tests** per engine module; **contract tests** for each platform protocol with a fake.
 - **UI goldens** for the main window, onboarding steps, overlay states, settings, and history; render light/dark.
 - **Hardware tests** are manual and marked skipped; record OS, camera pair, GPU, and permission state.
-- **`doctor --json`** reports paths, cameras, audio, permissions, model/provider status, capabilities, and the last error; the UI uses the same data.
-- **CI matrix**: Linux, Windows, macOS for lint/unit/contract; packaging jobs per OS. Hardware-dependent jobs stay manual.
+- **`doctor --json`** reports paths, cameras, audio, permissions, model/provider status, capabilities, and path errors; the UI reads the same `DoctorReport`.
+- **Verified here**: `uv run pytest` (97 tests), headless Qt goldens, a fake OpenAI-compatible server, a fake ACP agent, a real Claude Agent ACP round-trip, a 675 MB `.deb` and a 561 MB AppImage. Hardware-dependent jobs remain manual.
 - **Packaging**: Linux `.deb`/AppImage (udev rule included), macOS `.dmg` notarized (outside MAS), Windows MSI/EXE signed; uninstall and update paths from day one.
 
-## 10. Open decisions
+## 10. Decisions now settled in code
 
-See [decisions.md](decisions.md). The three that block UI work:
+- **D1** PySide6 shell is implemented. The overlay remains per-OS; GNOME Wayland keeps the tray/toast fallback.
+- **D2** App-owned Parakeet/landmarks; bring-your-own text LLM and optional VLM (D9/D10).
+- **D3** X11 click-through pill; Wayland tray/toast fallback with an explicit capability reason.
+- **D4** Four roots and `KEYBOARD_KILLER_HOME` are implemented; one-time migration keeps old files.
+- **D5** Stable `/dev/v4l/by-id` identity and a camera picker exist; calibration is still one legacy file rather than `<pair>-<monitor>.json` (partial).
+- **D6** Screen permission is reported, but the first capture still triggers the desktop prompt rather than a preflight request (partial).
+- **D7** Linux `.deb`/AppImage are built; macOS/Windows signing and installers are not started.
+- **D8** Linux productization first; Windows/macOS are stubs.
 
-- **D1** UI stack: PySide6 vs Tauri + Python sidecar vs Rust/Rune.
-- **D2** Model ownership: decided — app-owned STT/landmarks, bring-your-own LLM/VLM (see D9, D10).
-- **D3** Overlay strategy per OS, especially GNOME Wayland.
-
-Everything else (data roots, camera identity, screen permissions, packaging, first OS) follows those three.
+See [decisions.md](decisions.md) for the full status table.

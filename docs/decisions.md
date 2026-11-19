@@ -1,6 +1,6 @@
 # Decisions
 
-**Status:** open research decisions. Recommendations are defaults for the first cross-platform release, not irreversible choices. Confirm D1–D3 before UI work. D2, D9, and D10 were revised on 2026-11-19 after the product direction: user-friendly like Hex, English-first, Parakeet STT, bring-your-own LLM with OpenAI-compatible and ACP providers.
+**Status:** implemented decisions, 2026-11-19. D1–D4, D7 (Linux), D8 (Linux-first), D9, and D10 are in code. D5 and D6 are partial. macOS/Windows execution of D7 is not started. Recommendations remain defaults, not irreversible choices.
 
 | ID | Decision | Recommendation |
 |---|---|---|
@@ -14,6 +14,21 @@
 | D8 | First cross-platform scope | Linux productization → Windows → macOS |
 | D9 | LLM providers | OpenAI-compatible + Ollama + ACP agents; keychain secrets |
 | D10 | Speech-to-text | Parakeet TDT 0.6B v2 via onnx-asr (CPU int8); faster-whisper fallback |
+
+## Implementation status
+
+| ID | Status | Evidence / remaining gap |
+|---|---|---|
+| D1 | **Done** | PySide6 main window, tray, onboarding, settings, history, tokens, headless goldens |
+| D2 | **Done** | App-owned Parakeet/landmarks; no bundled LLM; role-split providers |
+| D3 | **Done for Linux** | X11 click-through pill; Wayland tray/toast fallback with reason; no GNOME Shell extension |
+| D4 | **Done** | `config/paths.py`, `KEYBOARD_KILLER_HOME`, non-destructive migration; models in data, landmarker in cache |
+| D5 | **Partial** | Stable by-id discovery + camera picker; calibration still a single legacy file, not `<pair>-<monitor>.json` |
+| D6 | **Partial** | Screen capability/permission is reported before clicks; the first capture still triggers the OS prompt |
+| D7 | **Linux done** | `.deb` and AppImage built with udev/desktop/systemd; no signing, no macOS/Windows installers |
+| D8 | **Linux done** | Linux productized; Windows/macOS are tested capability stubs |
+| D9 | **Done** | Provider interface, openai_compat presets, Ollama, ACP, keychain, role checks, remote-VLM consent |
+| D10 | **Done** | Parakeet CPU int8 default, CUDA opt-in; Whisper CPU int8 fallback; pinned downloader/receipt; benchmark recorded |
 
 ## D1 — UI stack
 
@@ -50,7 +65,7 @@ The app never bundles an LLM runtime. App-owned assets use the Hex pattern: pinn
 
 **Why:** STT and landmarks are small, fixed, and needed for the core loop, so the app can guarantee them. LLM/VLM choice is personal (local, hosted, subscription agent), and the runtime is the largest cross-platform packaging burden (CUDA/Metal/Vulkan, licensing, multi-GB downloads).
 
-**Revisit if:** offline install or a portable single-folder build becomes a requirement; then add an app-owned GGUF tier behind the same provider interface.
+**Revisit if:** offline install or a portable single-folder build becomes a requirement; then add an app-owned GGUF tier behind the same provider interface. The Linux `.deb`/AppImage already bundle Python and the Python dependencies, but not the LLM runtime or model files.
 
 ## D3 — Overlay strategy
 
@@ -100,6 +115,8 @@ The app never bundles an LLM runtime. App-owned assets use the Hex pattern: pinn
 
 **Why:** today's hard-coded C270/CAM313 by-id paths fail for any other unit; a stable ID plus a visible picker is required for a layman.
 
+**Status:** the picker and stable discovery shipped; the default `AppConfig` still starts with the old C270/CAM313 by-id paths until setup saves new ones.
+
 ## D6 — Screen-capture permissions
 
 **Recommendation:** `ScreenSource.permission_state()` returns `granted | denied | unknown | needs_restart`; onboarding and `doctor` show it; the first capture requests the OS dialog.
@@ -109,6 +126,8 @@ The app never bundles an LLM runtime. App-owned assets use the Hex pattern: pinn
 - Windows: Windows.Graphics.Capture, no prompt; show the system capture indicator.
 
 **Why:** today a denied portal surfaces as `Wayland screenshot failed…` at click time. The permission must be visible before the user tries the core action.
+
+**Status:** `doctor` and the capability report show the screen row; capture still asks the desktop at first use. A dedicated preflight request is not implemented.
 
 ## D7 — Packaging and signing
 

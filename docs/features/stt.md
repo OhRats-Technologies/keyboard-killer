@@ -1,0 +1,89 @@
+# Speech-to-text (D10)
+
+## Shipped contract
+
+`keyboard_killer.voice.stt.base.SttEngine`:
+
+```python
+transcribe(audio_f32) -> str
+transcribe_detailed(audio_f32) -> SttResult   # text, no_speech_prob, avg_logprob, latency_ms
+status() -> SttStatus                          # name, ready, device, compute_type, model
+close()
+```
+
+`create_stt_engine` prefers Parakeet when its verified files are present and
+falls back to faster-whisper without blocking the daemon. `KEYBOARD_KILLER_STT_ENGINE`
+is not used; the setting is `stt_engine` in `settings.json` (`auto|parakeet|whisper`).
+
+## Pinned Parakeet model
+
+- Asset: `parakeet-tdt-0.6b-v2`
+- Repository: `istupakov/parakeet-tdt-0.6b-v2-onnx`
+- Revision: `0bbb45a3365852604aef28b538a8f066f4ccaa85`
+- License: CC-BY-4.0 (attribution: NVIDIA Parakeet TDT 0.6B v2, ONNX export by istupakov)
+- Files: `config.json`, `vocab.txt`, `nemo128.onnx`, `encoder-model.int8.onnx`,
+  `decoder_joint-model.int8.onnx` (about 630.7 MB)
+
+Every file pins bytes and SHA-256 in `models/catalog.py`. The downloader writes
+`<file>.partial`, resumes with HTTP Range, verifies SHA-256, promotes atomically,
+and writes `receipt.json` only after all files verify. `models verify stt`
+re-hashes the files. Existing complete files are reused; a corrupt file is kept
+as `.corrupt-<timestamp>` instead of being deleted.
+
+CPU int8 is the default (`CPUExecutionProvider`). CUDA is opt-in with
+`stt_provider: "cuda"` and requires the CUDA onnxruntime provider. The old
+cuBLAS preload is no longer on the default path; the faster-whisper wrapper only
+calls it when CUDA is explicitly requested.
+
+## Benchmark
+
+Method:
+
+- 12 English command phrases synthesized with `edge-tts` (`en-US-AriaNeural`) and
+  converted to 16 kHz mono PCM. These exercise the app's vocabulary
+  ("click send", "scroll down", "click the subscribe button", ...).
+- 40 real human command clips from
+  `airimonda/ai231-me2-voice-commands` (`real_voice` and
+  `FluentSpeechCommands` sources, holdout split). The clips are smart-home
+  commands ("turn on the lights", "play a song", ...), not desktop commands.
+  They are not redistributed in this repository.
+- Both engines loaded once with a warm-up, then each clip transcribed in
+  sequence on CPU int8. Latency is wall time around `transcribe`.
+- Exact match after lowercase/punctuation normalization; WER is word-level
+  Levenshtein ÷ expected words.
+
+Results:
+
+| Engine | TTS exact | TTS WER | TTS median | TTS p95 | Real exact | Real WER | Real median | Real p95 | Real RTF |
+|---|---|---|---|---|---|---|---|---|---|
+| Parakeet TDT 0.6B v2 | 100% | 0.000 | 170 ms | 198 ms | 92.5% | 0.025 | 245 ms | 260 ms | 0.049 |
+| faster-whisper base.en | 100% | 0.000 | 313 ms | 338 ms | 92.5% | 0.058 | 319 ms | 347 ms | 0.067 |
+
+Parakeet is faster on both sets and has lower WER on the real human clips. The
+exact-match rate is equal because both make one lexical error on different
+clips: Parakeet heard "Pause the song" for "Pause this song"; Whisper hallucinated
+"Bye" for "Time" and "Post" for "Pause".
+
+## Gaps
+
+- No natural human recordings of this app's desktop command phrases were
+  available. The acoustic path was tested with the Razer Seiren Mini, but the
+  only output sink was HDMI and the played TTS was too quiet to transcribe, so
+  the benchmark uses files rather than over-the-air recordings.
+- CUDA, DirectML, CoreML, and macOS/Windows execution were not tested. Only CPU
+  int8 on this Linux machine is verified.
+- Parakeet does not expose Whisper's `no_speech_prob`/`avg_logprob`; the listener
+  keeps its VAD and lexical gates, and Parakeet results carry neutral confidence.
+- Whisper `initial_prompt` vocabulary biasing is not used by the fallback; the
+  dispatcher's fuzzy matching remains the command robustness layer.
+
+## Reproduce
+
+```bash
+uv run keyboard-killer models download stt
+uv run keyboard-killer models verify stt
+uv run keyboard-killer test-audio --seconds 5 --transcribe
+uv run python scripts/stt_benchmark.py /path/to/manifest.json --engine both
+```
+
+Manifest format: `[{"wav": "...", "text": "expected words"}, ...]`.

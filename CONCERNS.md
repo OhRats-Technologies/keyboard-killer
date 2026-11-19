@@ -1,39 +1,58 @@
 # CONCERNS
 
-Register of observed concerns for Keyboard-Killer. This is a list, not a fix plan; no remediation is proposed here.
+Register of observed concerns for Keyboard-Killer, with the 2026-11-19 implementation status. The original concern text is preserved; resolved/partial/open reflects what shipped.
 
-- Checkout: `45ea4e4` (2026-11-19)
-- Sources: `README.md`, `pyproject.toml`, `scripts/`, `src/`, `firefox_ext/`, and the 2026-11-19 usability call recording.
+- Initial checkout: `45ea4e4` (2026-11-19). Implementation review: steps 1–8 on 2026-11-19.
+- Sources: the original checkout, the 2026-11-19 usability call recording, the product plan in `docs/`, and the implementation tests/packaging evidence below.
 - Reference: `anomalyco/hex` @ `6435633` (shallow clone, read-only; UI/onboarding comparison only).
 - Architecture research and target file maps: [docs/README.md](docs/README.md).
 - Severity: **Blocker** = prevents the documented first run on the target platform; **High** = blocks a core feature or yields wrong behavior; **Medium** = friction, degraded behavior, or misleading docs; **Low** = operational/polish.
-- Setup claims come from static inspection. No install or on-device run was performed for this review.
+- The original setup claims came from static inspection. The status column reflects actual runs on this Linux machine: 97 tests, `doctor --json`, a real ACP round-trip, and a built `.deb`/AppImage. Hardware-only checks (two cameras, calibration, uinput injection, screen capture) were not performed.
 
 ## Summary
 
-| ID | Area | Concern | Severity |
-|---|---|---|---|
-| C-01 | Setup | Camera binding is hard-coded to one specific C270 and one specific CAM 313 | High |
-| C-02 | Setup | Calibration is a mandatory, GUI-only gate before vision | High (Blocker on headless) |
-| C-03 | Setup | `check-system` covers only cameras, uinput, and display | Medium |
-| C-04 | Setup | System dependencies (PortAudio, CUDA, AT-SPI, GUI, `gdbus`) are undocumented | High |
-| C-05 | Setup | LLM/VLM provisioning is manual and implicit | High (full features) |
-| C-06 | Setup | Firefox extension has no install/package path | Medium |
-| C-07 | Setup | Screenshot permission is a hidden runtime prerequisite | High |
-| C-08 | Setup | First run needs network for model downloads | Medium |
-| C-09 | Setup | README assumes GPU; code silently falls back to CPU | Medium |
-| C-10 | Runtime | Headline features are off by default in `run` | Medium |
-| C-11 | Runtime | `run-voice` still initializes the VLM stack and cannot enable pop-click from the CLI | Medium |
-| C-12 | Ops | No packaging, service, update, or uninstall path | Low |
-| P-01 | Privacy | Always-on microphone by default | Medium |
-| P-02 | Privacy | Screen capture and click emission have no persistent indicator | Medium |
-| U-01 | Usability | Named-target click missed in the recorded demo | High |
-| U-02 | Usability | Ordinal tab commands are ambiguous and slow to confirm | High |
-| U-03 | Usability | Target confirmation HUD exists only in Firefox | Medium |
-| U-04 | Usability | VLM weight is a stated concern | Medium |
-| U-05 | Evidence | No targeting benchmark or eval harness | Medium |
-| U-06 | Evidence | Demo used Chrome + Twitch; does not exercise the DOM tier | Medium |
-| U-07 | Evidence | Recording cannot support aim/jitter/drift assessment | Low |
+| ID | Area | Concern | Severity | Status (2026-11-19) |
+|---|---|---|---|---|
+| C-01 | Setup | Camera binding is hard-coded to one specific C270 and one specific CAM 313 | High | Partial |
+| C-02 | Setup | Calibration is a mandatory, GUI-only gate before vision | High (Blocker on headless) | Open |
+| C-03 | Setup | `check-system` covers only cameras, uinput, and display | Medium | Resolved |
+| C-04 | Setup | System dependencies (PortAudio, CUDA, AT-SPI, GUI, `gdbus`) are undocumented | High | Partial |
+| C-05 | Setup | LLM/VLM provisioning is manual and implicit | High (full features) | Resolved |
+| C-06 | Setup | Firefox extension has no install/package path | Medium | Open |
+| C-07 | Setup | Screenshot permission is a hidden runtime prerequisite | High | Partial |
+| C-08 | Setup | First run needs network for model downloads | Medium | Partial |
+| C-09 | Setup | README assumes GPU; code silently falls back to CPU | Medium | Resolved |
+| C-10 | Runtime | Headline features are off by default in `run` | Medium | Partial |
+| C-11 | Runtime | `run-voice` still initializes the VLM stack and cannot enable pop-click from the CLI | Medium | Open |
+| C-12 | Ops | No packaging, service, update, or uninstall path | Low | Resolved (Linux) |
+| P-01 | Privacy | Always-on microphone by default | Medium | Open |
+| P-02 | Privacy | Screen capture and click emission have no persistent indicator | Medium | Partial |
+| U-01 | Usability | Named-target click missed in the recorded demo | High | Open |
+| U-02 | Usability | Ordinal tab commands are ambiguous and slow to confirm | High | Open |
+| U-03 | Usability | Target confirmation HUD exists only in Firefox | Medium | Partial |
+| U-04 | Usability | VLM weight is a stated concern | Medium | Partial |
+| U-05 | Evidence | No targeting benchmark or eval harness | Medium | Open |
+| U-06 | Evidence | Demo used Chrome + Twitch; does not exercise the DOM tier | Medium | Open |
+| U-07 | Evidence | Recording cannot support aim/jitter/drift assessment | Low | Open |
+
+## Implementation status (2026-11-19)
+
+This is the post-implementation view. "Resolved" means the shipped behavior removes the original failure; "Partial" means a real surface exists but a stated gap remains; "Open" means no fix shipped.
+
+| Status | Concerns | Summary |
+|---|---|---|
+| **Resolved** | C-03, C-05, C-09, C-12, L-01, L-02, L-03, L-06, L-08, L-11, L-12, L-13 | `doctor` and one capability report; provider layer; CPU int8 default; Linux packaging; PySide6 shell; resumable onboarding; permissions rows; model/provider status; SQLite history; settings UI; practice/ready; `.deb`/AppImage |
+| **Partial** | C-01, C-04, C-07, C-08, C-10, P-02, U-03, U-04, L-04, L-05, L-07, L-09, L-10, L-14 | Stable camera discovery/picker (defaults still old); dependency docs/packaging (hardware still needs checks); screen permission reported but first capture prompts; STT download with progress/fallback; settings expose defaults; tray/toast fallback (no persistent Wayland overlay); camera previews without face-found/quality; calibration still a separate OpenCV window; X11 overlay but Wayland fallback; pause stops the daemon; some daemon errors remain CLI strings; tokens/light/dark but no i18n or full accessibility audit |
+| **Open** | C-02, C-06, C-11, P-01, U-01, U-02, U-05, U-06, U-07 | Calibration still a mandatory GUI gate; Firefox extension install/signing; `run-voice` still initializes the VLM; always-on mic default; named-target accuracy/tab ordinals/eval harness/demo validity not addressed |
+
+### Evidence
+
+- `uv run pytest`: 97 tests pass, including contract tests with fake OpenAI-compatible and fake ACP servers and headless Qt goldens.
+- `uv run keyboard-killer doctor --json`: paths, cameras, audio, display, permissions, capabilities, STT (Parakeet ready), providers (Ollama unreachable is reported), keychain available.
+- Real ACP round-trip: Claude Agent ACP returned `Hello.` in about 1.5 s after 1.3 s initialize.
+- Packaging: self-contained `keyboard-killer_0.1.0_amd64.deb` (675.5 MB) and `Keyboard-Killer-0.1.0-x86_64.AppImage` (561.4 MB) built; bundled runtime `doctor`/UI smoke-tested; `.deb` structure verified.
+- Hardware not proven: two cameras together, calibration, `/dev/uinput` synthetic clicks, screen capture, acoustic command recording. The microphone opened and the camera was discovered, but that is not a working end-to-end hardware test.
+- The 12 command phrases used in the STT benchmark were TTS-generated; the 40 real human clips were smart-home commands. No natural human desktop-command corpus was available.
 
 ## Setup and onboarding
 
@@ -184,22 +203,22 @@ Register of observed concerns for Keyboard-Killer. This is a list, not a fix pla
 
 **Concerns**
 
-| ID | Concern | Severity |
-|---|---|---|
-| L-01 | There is no product surface (only a CLI) | High |
-| L-02 | Install and first run are a terminal checklist | Blocker for layman |
-| L-03 | Permissions and consent are not onboarded | High |
-| L-04 | Camera setup is invisible | High |
-| L-05 | Calibration is a developer diagnostic | High |
-| L-06 | Models and local services are invisible | High |
-| L-07 | No global aim/click feedback | High |
-| L-08 | No "what did it just do?" history | Medium |
-| L-09 | No pause, mic, or screen state | High |
-| L-10 | Errors are developer strings | High |
-| L-11 | Settings are JSON and flags | Medium |
-| L-12 | No safe practice or ready handoff | High |
-| L-13 | Install is not an app install | High |
-| L-14 | No visual identity or accessibility baseline | Medium |
+| ID | Concern | Severity | Status (2026-11-19) |
+|---|---|---|---|
+| L-01 | There is no product surface (only a CLI) | High | Resolved |
+| L-02 | Install and first run are a terminal checklist | Blocker for layman | Resolved (Linux) |
+| L-03 | Permissions and consent are not onboarded | High | Resolved |
+| L-04 | Camera setup is invisible | High | Partial |
+| L-05 | Calibration is a developer diagnostic | High | Partial |
+| L-06 | Models and local services are invisible | High | Resolved |
+| L-07 | No global aim/click feedback | High | Partial |
+| L-08 | No "what did it just do?" history | Medium | Resolved |
+| L-09 | No pause, mic, or screen state | High | Partial |
+| L-10 | Errors are developer strings | High | Partial |
+| L-11 | Settings are JSON and flags | Medium | Resolved |
+| L-12 | No safe practice or ready handoff | High | Resolved |
+| L-13 | Install is not an app install | High | Resolved (Linux) |
+| L-14 | No visual identity or accessibility baseline | Medium | Partial |
 
 ### L-01 — There is no product surface
 
@@ -308,4 +327,3 @@ Register of observed concerns for Keyboard-Killer. This is a list, not a fix pla
 5. Settings and history after the core: hotkey, sensitivity, devices, model, retention, recent actions.
 
 **The layman version, in one sentence:** install it like an app, see a short setup that proves the camera, voice, and click work, then keep a small always-on indicator that says what it heard and where it clicked, with a pause button and plain-language recovery. Everything technical lives under Advanced.
-

@@ -1,6 +1,6 @@
 # File Map
 
-**Status:** target map, not a migration that has happened. Paths under "Target" are proposals.
+**Status:** migration executed for steps 1–5 (2026-11-19). The tree below is the shipped Linux layout with a few remaining compatibility shims; Windows/macOS files are stubs. Remaining moves are listed under "Migration status".
 
 The goal is a layout where the shared engine is obvious, every OS-specific API is behind `platform/`, and the product surfaces (UI, onboarding, overlay) are separate from the daemon.
 
@@ -54,10 +54,12 @@ keyboard-killer/
 │   │   │   ├── hotkeys.py        # evdev
 │   │   │   ├── cameras.py        # V4L2
 │   │   │   ├── v4l2.py           # exposure/gain ioctls
+│   │   │   ├── display.py        # Mutter logical monitor layout
+│   │   │   ├── hotkeys.py        # evdev PTT, click harvesting, cursor resolver
 │   │   │   ├── screen.py         # GNOME Shell + portal
 │   │   │   ├── accessibility.py  # AT-SPI
 │   │   │   ├── permissions.py    # udev/uinput/portal
-│   │   │   ├── tray.py           # StatusNotifierItem
+│   │   │   # tray is ui/tray.py (Qt); no native StatusNotifierItem adapter yet
 │   │   │   └── autostart.py
 │   │   ├── macos/
 │   │   │   ├── pointer.py        # CGEvent
@@ -130,10 +132,14 @@ keyboard-killer/
 │   │       ├── ollama.py         # status/pull/warm
 │   │       ├── acp.py            # Agent Client Protocol client over stdio
 │   │       ├── acp_registry.py   # registry fetch + offline fallback list
+│   │       ├── roles.py          # text/VLM role bindings and consent checks
 │   │       ├── presets.json
 │   │       └── secrets.py        # OS keychain via keyring
 │   ├── ui/
 │   │   ├── app.py                # main window shell
+│   │   ├── overlay/macos.py      # overlay stub
+│   │   ├── overlay/windows.py    # overlay stub
+│   │   ├── session.py            # UI <-> daemon child process
 │   │   ├── tray.py
 │   │   ├── overlay/
 │   │   │   ├── base.py
@@ -165,6 +171,28 @@ keyboard-killer/
 ├── pyproject.toml
 └── uv.lock
 ```
+
+## Migration status
+
+| Area | Status | Notes |
+|---|---|---|
+| `config/` package (schema, paths, migrations) | **Done** | `settings.json`, one-time copy migration, `KEYBOARD_KILLER_HOME` |
+| `platform/base.py`, `platform/capabilities.py` | **Done** | One capability report for doctor/UI |
+| Linux pointer/hotkeys/cameras/V4L2/screen/AT-SPI/display | **Done** | Behavior-preserving moves; compatibility imports updated |
+| STT (`voice/stt/`) | **Done** | Parakeet + Whisper fallback, catalog/downloader/store/receipts |
+| Providers (`models/providers/`) | **Done** | openai_compat, Ollama, ACP, registry, secrets, roles |
+| Diagnostics (`diagnostics/doctor.py`) | **Done** | `doctor` and `doctor --json` |
+| UI (`ui/`) | **Done for Linux** | Main window, tray, onboarding, settings, history, tokens, overlay fallback |
+| Packaging (`packaging/linux/`) | **Done** | `.deb` and AppImage built and smoke-tested |
+| Windows/macOS seams | **Stubs** | Capability stubs return `unsupported_platform`; backends raise `NotSupportedError` |
+| `audio/`, `router/`, `vision/` shims | **Partial** | The engine modules still live here with moved OS details behind `platform/`; not a behavior problem |
+
+### Remaining moves (not required for the first Linux release)
+
+- `vision/ui_detector.py` still contains OCR/box detection; the capture API moved to `platform/linux/screen.py`.
+- `vision/stereo_capture.py`, `vision/landmarks.py`, `vision/cursor_gimbal.py`, `vision/calibrator.py` remain engine modules rather than `capture/`/`gaze/` directories.
+- `audio/` still holds the listener/pop/STT compatibility shim; `voice/` has the audio loop and STT.
+- `ipc/firefox_bridge.py` remains under `ipc/`; the optional extension still lives at `firefox_ext/` until packaging settles.
 
 ## Current-to-target map
 
