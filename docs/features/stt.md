@@ -12,8 +12,7 @@ close()
 ```
 
 `create_stt_engine` prefers Parakeet when its verified files are present and
-falls back to faster-whisper without blocking the daemon. `KEYBOARD_KILLER_STT_ENGINE`
-is not used; the setting is `stt_engine` in `settings.json` (`auto|parakeet|whisper`).
+falls back to faster-whisper without blocking the daemon. The setting is `stt_engine` in `settings.json` (`auto|parakeet|whisper`).
 
 ## Pinned Parakeet model
 
