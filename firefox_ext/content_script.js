@@ -47,9 +47,33 @@
   let activeElementsMap = new Map();
   let lastGazeScreen = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   let lastMonitorOffset = { x: 0, y: 0, w: 0, h: 0, usedMonLocal: false };
+  let measuredViewportOrigin = { x: 0, y: 0, valid: false };
+  let lastClientMouse = { x: 0, y: 0, ts: 0 };
+  let pendingPointerAnchor = null;
   let hudContainer = null;
   let hudBox = null;
   let hudBadge = null;
+
+  window.addEventListener(
+    "mousemove",
+    (ev) => {
+      const now = performance.now();
+      lastClientMouse = { x: ev.clientX, y: ev.clientY, ts: now };
+      if (pendingPointerAnchor && now - pendingPointerAnchor.ts <= 250) {
+        measuredViewportOrigin = {
+          x: pendingPointerAnchor.gx - ev.clientX,
+          y: pendingPointerAnchor.gy - ev.clientY,
+          valid: true
+        };
+        pendingPointerAnchor = null;
+      }
+    },
+    { capture: true, passive: true }
+  );
+
+  window.addEventListener("resize", () => {
+    measuredViewportOrigin.valid = false;
+  });
 
   function ensureHUD() {
     if (hudContainer && document.documentElement.contains(hudContainer)) return;
@@ -103,6 +127,17 @@
     const mozX = typeof window.mozInnerScreenX === "number" ? window.mozInnerScreenX : window.screenX;
     const mozY = typeof window.mozInnerScreenY === "number" ? window.mozInnerScreenY : window.screenY;
 
+    // 1. Exact measured Wayland window origin (locked via pointer_anchor + mousemove)
+    if (measuredViewportOrigin.valid) {
+      return {
+        vx: screenX - measuredViewportOrigin.x,
+        vy: screenY - measuredViewportOrigin.y,
+        mozX,
+        mozY,
+        dpr
+      };
+    }
+
     let vx = screenX - mozX;
     let vy = screenY - mozY;
     let usedMonLocal = false;
@@ -115,15 +150,24 @@
       screenY >= monY &&
       screenY < monY + monH;
 
-    // On Wayland, Firefox's mozInnerScreenX/Y is often window/monitor-local (< monX on right monitors)
+    // On Wayland, Firefox's mozInnerScreenX/Y is window-local (0, toolbarHeight) because
+    // Wayland hides top-level window (x, y) from clients. For floating windows that don't
+    // fill the full monitor, approximate centered window origin until pointer_anchor locks exact origin.
+    const isFloatingWindow =
+      monW > 0 &&
+      monH > 0 &&
+      (window.outerWidth < monW - 60 || window.outerHeight < monH - 90);
+    const estWinOffX = isFloatingWindow ? Math.max(0, Math.round((monW - window.outerWidth) * 0.5)) : 0;
+    const estWinOffY = isFloatingWindow ? Math.max(0, Math.round((monH - window.outerHeight) * 0.5)) : 0;
+
     if (
-      (inMonitorBounds && (mozX < monX || mozY < monY)) ||
+      (inMonitorBounds && (mozX < monX || mozY < monY || isFloatingWindow)) ||
       ((vx < -200 || vx > window.innerWidth + 200 || vy < -200 || vy > window.innerHeight + 200) &&
-        (monX !== 0 || monY !== 0))
+        (monX !== 0 || monY !== 0 || isFloatingWindow))
     ) {
-      const localVx = (screenX - monX) - mozX;
-      const localVy = (screenY - monY) - mozY;
-      if (localVx >= -200 && localVx <= window.innerWidth + 200 && localVy >= -200 && localVy <= window.innerHeight + 200) {
+      const localVx = (screenX - monX - estWinOffX) - mozX;
+      const localVy = (screenY - monY - estWinOffY) - mozY;
+      if (localVx >= -350 && localVx <= window.innerWidth + 350 && localVy >= -350 && localVy <= window.innerHeight + 350) {
         vx = localVx;
         vy = localVy;
         usedMonLocal = true;
@@ -131,15 +175,27 @@
     }
 
     if ((vx < -200 || vx > window.innerWidth + 200) && dpr > 1.05) {
-      vx = (usedMonLocal ? (screenX - monX) : screenX) / dpr - mozX;
-      vy = (usedMonLocal ? (screenY - monY) : screenY) / dpr - mozY;
+      vx = (usedMonLocal ? (screenX - monX - estWinOffX) : screenX) / dpr - mozX;
+      vy = (usedMonLocal ? (screenY - monY - estWinOffY) : screenY) / dpr - mozY;
     }
 
-    lastMonitorOffset = { x: monX, y: monY, w: monW, h: monH, usedMonLocal };
+    lastMonitorOffset = {
+      x: monX + estWinOffX,
+      y: monY + estWinOffY,
+      w: monW,
+      h: monH,
+      usedMonLocal
+    };
     return { vx, vy, mozX, mozY, dpr };
   }
 
   function viewportToScreen(vx, vy) {
+    if (measuredViewportOrigin.valid) {
+      return {
+        sx: Math.round(measuredViewportOrigin.x + vx),
+        sy: Math.round(measuredViewportOrigin.y + vy)
+      };
+    }
     const mozX = typeof window.mozInnerScreenX === "number" ? window.mozInnerScreenX : window.screenX;
     const mozY = typeof window.mozInnerScreenY === "number" ? window.mozInnerScreenY : window.screenY;
     const offX = lastMonitorOffset.usedMonLocal ? lastMonitorOffset.x : 0;
@@ -514,12 +570,30 @@
     return candidates.slice(0, 65);
   }
 
+  function hideHUD() {
+    if (hudBox) hudBox.style.display = "none";
+    if (hudBadge) hudBadge.style.display = "none";
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) hideHUD();
+  });
+  window.addEventListener("blur", hideHUD);
+
   function updateMagneticHUD(gazeScreenX, gazeScreenY, monX = 0, monY = 0, monW = 0, monH = 0) {
+    if (document.hidden || !document.hasFocus()) {
+      hideHUD();
+      return;
+    }
+    const { vx, vy } = screenToViewport(gazeScreenX, gazeScreenY, monX, monY, monW, monH);
+    if (vx < -40 || vx > window.innerWidth + 40 || vy < -40 || vy > window.innerHeight + 40) {
+      hideHUD();
+      return;
+    }
     ensureHUD();
     const candidates = scanInteractiveDOM(gazeScreenX, gazeScreenY, monX, monY, monW, monH);
-    if (candidates.length === 0 || candidates[0].gaze_dist_px > 220) {
-      hudBox.style.display = "none";
-      hudBadge.style.display = "none";
+    if (candidates.length === 0 || candidates[0].gaze_dist_px > 420) {
+      hideHUD();
       return;
     }
 
@@ -724,7 +798,221 @@
     return handled;
   }
 
+  let autoScrollRAF = null;
+  let autoScrollSpeedPxPerSec = 140;
+  let autoScrollDir = 1;
+  let autoScrollTarget = null;
+
+  function canElementScroll(el, axis = "y", dirSign = 0) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    const tag = el.tagName ? el.tagName.toLowerCase() : "";
+    if (
+      (tag === "textarea" || tag === "input" || el.getAttribute("contenteditable") === "true") &&
+      el.clientHeight < 220
+    ) {
+      return false;
+    }
+
+    const style = window.getComputedStyle(el);
+    if (axis === "y") {
+      const ovY = style.overflowY;
+      const isScrollStyle = ovY === "auto" || ovY === "scroll" || ovY === "overlay";
+      if (!isScrollStyle || el.scrollHeight <= el.clientHeight + 12) return false;
+      if (dirSign < 0 && el.scrollTop <= 1) return false;
+      if (dirSign > 0 && el.scrollTop + el.clientHeight >= el.scrollHeight - 2) return false;
+      return true;
+    } else {
+      const ovX = style.overflowX;
+      const isScrollStyle = ovX === "auto" || ovX === "scroll" || ovX === "overlay";
+      if (!isScrollStyle || el.scrollWidth <= el.clientWidth + 12) return false;
+      if (dirSign < 0 && el.scrollLeft <= 1) return false;
+      if (dirSign > 0 && el.scrollLeft + el.clientWidth >= el.scrollWidth - 2) return false;
+      return true;
+    }
+  }
+
+  function findBestScrollContainer(gazeScreenX, gazeScreenY, axis = "y", dirSign = 0) {
+    const { vx, vy } = screenToViewport(gazeScreenX, gazeScreenY);
+    const clampedX = Math.max(10, Math.min(window.innerWidth - 10, vx));
+    const clampedY = Math.max(10, Math.min(window.innerHeight - 10, vy));
+
+    const hitNodes = document.elementsFromPoint(clampedX, clampedY);
+    for (const startNode of hitNodes) {
+      let cur = startNode;
+      while (cur && cur !== document.body && cur !== document.documentElement) {
+        if (canElementScroll(cur, axis, dirSign)) {
+          return cur;
+        }
+        cur = cur.parentElement || (cur.getRootNode && cur.getRootNode().host) || null;
+      }
+    }
+
+    for (const startNode of hitNodes) {
+      let cur = startNode;
+      while (cur && cur !== document.body && cur !== document.documentElement) {
+        if (canElementScroll(cur, axis, 0)) {
+          return cur;
+        }
+        cur = cur.parentElement || (cur.getRootNode && cur.getRootNode().host) || null;
+      }
+    }
+
+    const rootScroller = document.scrollingElement || document.documentElement;
+    if (
+      axis === "y" &&
+      rootScroller &&
+      rootScroller.scrollHeight > window.innerHeight + 20
+    ) {
+      return rootScroller;
+    }
+
+    let bestPane = null;
+    let bestArea = 0;
+    const allElements = collectAllInteractiveRoots
+      ? document.querySelectorAll("div, main, section, ul, article, pre, aside")
+      : [];
+    for (const el of allElements) {
+      if (!canElementScroll(el, axis, dirSign) && !canElementScroll(el, axis, 0)) continue;
+      const r = el.getBoundingClientRect();
+      if (!isVisible(el, r)) continue;
+      const area = r.width * r.height;
+      if (area > bestArea) {
+        bestArea = area;
+        bestPane = el;
+      }
+    }
+
+    return bestPane || rootScroller;
+  }
+
+  function stopAutoScroll() {
+    if (autoScrollRAF !== null) {
+      cancelAnimationFrame(autoScrollRAF);
+      autoScrollRAF = null;
+    }
+  }
+
+  function startAutoScroll(targetEl, dirSign, speedPxPerSec = 140) {
+    stopAutoScroll();
+    autoScrollTarget = targetEl;
+    autoScrollDir = dirSign;
+    autoScrollSpeedPxPerSec = speedPxPerSec;
+    let lastTs = performance.now();
+
+    function step(nowTs) {
+      const dt = Math.min(0.1, (nowTs - lastTs) / 1000);
+      lastTs = nowTs;
+      const dy = autoScrollDir * autoScrollSpeedPxPerSec * dt;
+      if (
+        autoScrollTarget === document.documentElement ||
+        autoScrollTarget === document.body ||
+        autoScrollTarget === document.scrollingElement
+      ) {
+        window.scrollBy(0, dy);
+      } else if (autoScrollTarget) {
+        autoScrollTarget.scrollTop += dy;
+      }
+      autoScrollRAF = requestAnimationFrame(step);
+    }
+
+    autoScrollRAF = requestAnimationFrame(step);
+  }
+
+  function executeDOMScroll(msg) {
+    const gx = typeof msg.gaze_x === "number" ? msg.gaze_x : lastGazeScreen.x;
+    const gy = typeof msg.gaze_y === "number" ? msg.gaze_y : lastGazeScreen.y;
+    const direction = (msg.direction || "down").toLowerCase();
+    const amount = (msg.amount || "normal").toLowerCase();
+    const continuous = (msg.continuous || "").toLowerCase();
+
+    if (continuous === "stop") {
+      stopAutoScroll();
+      return { ok: true, mode: "auto_scroll_stopped" };
+    }
+    if (continuous === "faster" && autoScrollRAF !== null) {
+      autoScrollSpeedPxPerSec = Math.min(600, autoScrollSpeedPxPerSec * 1.45);
+      return { ok: true, mode: "auto_scroll_faster", speed: autoScrollSpeedPxPerSec };
+    }
+    if (continuous === "slower" && autoScrollRAF !== null) {
+      autoScrollSpeedPxPerSec = Math.max(40, autoScrollSpeedPxPerSec * 0.68);
+      return { ok: true, mode: "auto_scroll_slower", speed: autoScrollSpeedPxPerSec };
+    }
+
+    stopAutoScroll();
+
+    const isHorizontal = direction === "left" || direction === "right";
+    const axis = isHorizontal ? "x" : "y";
+    const dirSign = direction === "up" || direction === "left" || direction === "top" ? -1 : 1;
+
+    const target = findBestScrollContainer(gx, gy, axis, dirSign);
+    const isRoot =
+      target === document.documentElement ||
+      target === document.body ||
+      target === document.scrollingElement;
+
+    if (continuous === "start") {
+      startAutoScroll(target, dirSign, 140);
+      return { ok: true, mode: "auto_scroll_started" };
+    }
+
+    const viewH = isRoot ? window.innerHeight : target.clientHeight || window.innerHeight;
+    const viewW = isRoot ? window.innerWidth : target.clientWidth || window.innerWidth;
+
+    if (direction === "top") {
+      target.scrollTo({ top: 0, behavior: "smooth" });
+      return { ok: true, target_tag: target.tagName };
+    }
+    if (direction === "bottom") {
+      const maxTop = target.scrollHeight || document.documentElement.scrollHeight;
+      target.scrollTo({ top: maxTop, behavior: "smooth" });
+      return { ok: true, target_tag: target.tagName };
+    }
+
+    const ratio = amount === "small" ? 0.25 : amount === "large" ? 0.88 : 0.58;
+    const deltaPx = Math.round((isHorizontal ? viewW : viewH) * ratio) * dirSign;
+
+    if (isHorizontal) {
+      target.scrollBy({ left: deltaPx, behavior: "smooth" });
+    } else {
+      target.scrollBy({ top: deltaPx, behavior: "smooth" });
+    }
+
+    return { ok: true, target_tag: target.tagName, delta_px: deltaPx };
+  }
+
   browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg.type === "pointer_anchor") {
+      const gx = Number(msg.global_x);
+      const gy = Number(msg.global_y);
+      const now = performance.now();
+      if (Number.isFinite(gx) && Number.isFinite(gy)) {
+        if (now - lastClientMouse.ts <= 150) {
+          measuredViewportOrigin = {
+            x: gx - lastClientMouse.x,
+            y: gy - lastClientMouse.y,
+            valid: true
+          };
+          pendingPointerAnchor = null;
+        } else {
+          pendingPointerAnchor = { gx, gy, ts: now };
+        }
+      }
+      sendResponse({ ok: true, valid: measuredViewportOrigin.valid });
+      return false;
+    }
+
+    if (msg.type === "hide_hud") {
+      hideHUD();
+      sendResponse({ ok: true });
+      return false;
+    }
+
+    if (msg.type === "scroll_dom") {
+      const res = executeDOMScroll(msg);
+      sendResponse(res);
+      return false;
+    }
+
     if (msg.type === "execute_media_action") {
       const handled = handleMediaAction(msg.media_action || "");
       sendResponse({ ok: true, handled });
@@ -759,6 +1047,7 @@
     }
 
     if (msg.type === "execute_dom_action") {
+      stopAutoScroll();
       const el = activeElementsMap.get(msg.dom_id);
       if (!el || !el.isConnected) {
         sendResponse({ ok: false, error: "Element no longer in DOM" });
@@ -784,4 +1073,19 @@
       return false;
     }
   });
+
+  // Passively harvest physical user mouse clicks in Firefox for continuous gaze calibration!
+  window.addEventListener(
+    "mousedown",
+    (ev) => {
+      if (!ev.isTrusted || ev.button !== 0) return;
+      const sc = viewportToScreen(ev.clientX, ev.clientY);
+      browser.runtime.sendMessage({
+        type: "passive_mouse_click",
+        screen_x: sc.sx,
+        screen_y: sc.sy
+      }).catch(() => {});
+    },
+    { capture: true, passive: true }
+  );
 })();

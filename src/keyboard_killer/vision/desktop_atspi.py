@@ -193,6 +193,28 @@ class _AtspiDirectEngine:
         gi.require_version("Atspi", "2.0")
         from gi.repository import Atspi  # type: ignore
 
+        # Best-effort enable AT-SPI2 toolkit accessibility (never toggle ScreenReaderEnabled,
+        # which launches GNOME's Orca spoken screen reader!).
+        try:
+            gi.require_version("Gio", "2.0")
+            gi.require_version("GLib", "2.0")
+            from gi.repository import Gio, GLib  # type: ignore
+
+            bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+            bus.call_sync(
+                "org.a11y.Bus",
+                "/org/a11y/bus",
+                "org.freedesktop.DBus.Properties",
+                "Set",
+                GLib.Variant("(ssv)", ("org.a11y.Status", "IsEnabled", GLib.Variant("b", True))),
+                None,
+                Gio.DBusCallFlags.NONE,
+                250,
+                None,
+            )
+        except Exception:
+            pass
+
         self._Atspi = Atspi
         Atspi.init()
         self._node_refs: dict[str, Any] = {}

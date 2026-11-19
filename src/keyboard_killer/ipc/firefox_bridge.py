@@ -164,11 +164,13 @@ class FirefoxDOMBridge:
         host: str = "127.0.0.1",
         port: int = 8765,
         ollama_client: Any | None = None,
+        on_passive_click: Any | None = None,
     ) -> None:
         self.host = host
         self.port = int(port)
         self.bound_port = self.port
         self._ollama = ollama_client if ollama_client is not None else ollama
+        self.on_passive_click = on_passive_click
         self._loop = asyncio.new_event_loop()
         self._clients: list[ServerConnection] = []
         self._pending_reqs: dict[str, asyncio.Future[dict[str, Any]]] = {}
@@ -227,6 +229,12 @@ class FirefoxDOMBridge:
                 try:
                     msg = json.loads(raw)
                 except Exception:
+                    continue
+                if msg.get("type") == "passive_mouse_click" and self.on_passive_click is not None:
+                    try:
+                        self.on_passive_click(int(msg["screen_x"]), int(msg["screen_y"]))
+                    except Exception:
+                        pass
                     continue
                 req_id = msg.get("req_id")
                 if req_id and req_id in self._pending_reqs:
@@ -295,6 +303,21 @@ class FirefoxDOMBridge:
                     "mon_y": int(mon_y),
                     "mon_w": int(mon_w),
                     "mon_h": int(mon_h),
+                }
+            ),
+            self._loop,
+        )
+
+    def send_pointer_anchor(self, global_x: int, global_y: int) -> None:
+        """Send a known global pointer position so Firefox locks its exact Wayland window origin."""
+        if not self.is_connected or not self._loop.is_running():
+            return
+        asyncio.run_coroutine_threadsafe(
+            self._send_cmd(
+                {
+                    "type": "pointer_anchor",
+                    "global_x": int(global_x),
+                    "global_y": int(global_y),
                 }
             ),
             self._loop,
@@ -411,6 +434,43 @@ class FirefoxDOMBridge:
         except Exception:
             return False
         return bool(resp and resp.get("ok") and resp.get("data", {}).get("handled"))
+
+    def scroll_page(
+        self,
+        gaze_x: float,
+        gaze_y: float,
+        direction: str = "down",
+        amount: str = "normal",
+        continuous: str = "",
+    ) -> bool:
+        """Scroll the DOM container under `(gaze_x, gaze_y)` inside Firefox."""
+        if not self.is_connected or not self._loop.is_running():
+            return False
+        fut = asyncio.run_coroutine_threadsafe(
+            self._send_cmd(
+                {
+                    "req_id": str(uuid.uuid4()),
+                    "type": "scroll_dom",
+                    "gaze_x": round(gaze_x, 1),
+                    "gaze_y": round(gaze_y, 1),
+                    "direction": direction,
+                    "amount": amount,
+                    "continuous": continuous,
+                },
+                timeout=0.35,
+            ),
+            self._loop,
+        )
+        try:
+            resp = fut.result(timeout=0.4)
+            if not resp or not resp.get("ok"):
+                return False
+            data = resp.get("data")
+            if isinstance(data, dict) and "ok" in data:
+                return bool(data.get("ok"))
+            return True
+        except Exception:
+            return False
 
     def list_tabs(self) -> list[TabInfo]:
         """Fetch all open tabs across Firefox windows."""

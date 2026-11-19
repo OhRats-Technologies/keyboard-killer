@@ -73,15 +73,21 @@ _MIN_FEATURE_SCALE = np.array(
     dtype=np.float64,
 )
 
-# Stage 1 Axis-aware feature weights (34-D polynomial base)
+# Expanded 34-D indices for raw head translation (tx, ty, tz), roll, and iris*tz cross-terms.
+# Zeroing these stops chair slouches 1 minute after calibration from linearly pushing gaze off-target;
+# yaw_los and pitch_los in landmarks.py already geometrically compensate for camera viewing ray angles.
+_POSE_TRANSLATION_EXPANDED_COLS: tuple[int, ...] = (6, 7, 8, 9, 16, 17, 18, 19, 21, 23, 25, 27)
+_POSE_TRANSLATION_RAW_COLS: tuple[int, ...] = (6, 7, 8, 9, 16, 17, 18, 19)
+
+# Stage 1 Axis-aware feature weights (34-D polynomial base, pose-translation invariant)
 _PRIOR_WEIGHTS_X = np.array(
     [
         # Cam 1: ax, ay, bx, by, yaw, pitch, roll, tx, ty, tz
-        1.00, 0.25, 1.00, 0.25, 0.85, 0.20, 0.25, 0.65, 0.20, 0.35,
+        1.00, 0.25, 1.00, 0.25, 0.85, 0.20, 0.00, 0.00, 0.00, 0.00,
         # Cam 2: ax, ay, bx, by, yaw, pitch, roll, tx, ty, tz
-        1.00, 0.25, 1.00, 0.25, 0.85, 0.20, 0.25, 0.65, 0.20, 0.35,
-        # 8 pose-iris interaction terms
-        0.55, 0.55, 0.55, 0.55, 0.18, 0.18, 0.18, 0.18,
+        1.00, 0.25, 1.00, 0.25, 0.85, 0.20, 0.00, 0.00, 0.00, 0.00,
+        # 8 pose-iris interaction terms (keep iris*yaw and iris*pitch, zero iris*tz)
+        0.55, 0.00, 0.55, 0.00, 0.18, 0.00, 0.18, 0.00,
         # 6 quadratic & keystone terms
         0.35, 0.15, 0.45, 0.35, 0.15, 0.45,
     ],
@@ -91,25 +97,26 @@ _PRIOR_WEIGHTS_X = np.array(
 _PRIOR_WEIGHTS_Y = np.array(
     [
         # Cam 1: ax, ay, bx, by, yaw, pitch, roll, tx, ty, tz
-        0.25, 1.00, 0.25, 1.00, 0.20, 0.85, 0.25, 0.20, 0.65, 0.35,
+        0.25, 1.00, 0.25, 1.00, 0.20, 0.85, 0.00, 0.00, 0.00, 0.00,
         # Cam 2: ax, ay, bx, by, yaw, pitch, roll, tx, ty, tz
-        0.25, 1.00, 0.25, 1.00, 0.20, 0.85, 0.25, 0.20, 0.65, 0.35,
-        # 8 pose-iris interaction terms
-        0.18, 0.18, 0.18, 0.18, 0.55, 0.55, 0.55, 0.55,
+        0.25, 1.00, 0.25, 1.00, 0.20, 0.85, 0.00, 0.00, 0.00, 0.00,
+        # 8 pose-iris interaction terms (keep iris*yaw and iris*pitch, zero iris*tz)
+        0.18, 0.00, 0.18, 0.00, 0.55, 0.00, 0.55, 0.00,
         # 6 quadratic & keystone terms
         0.15, 0.50, 0.45, 0.15, 0.50, 0.45,
     ],
     dtype=np.float64,
 )
 
-# Stage 2 RBF Metric Space Feature Scaling (20-D standardized input):
-# Give vertical iris (ay, by) and pitch higher priority so vertical corrections generalize across X.
+# Stage-2 RBF Metric Weights (Pose-Translation Invariant):
+# Zero weight on (roll, tx, ty, tz) so slouching or leaning 5cm in your chair a minute
+# after calibration NEVER pushes your feature vector off the 420 RBF support centers!
 _RBF_METRIC_WEIGHTS = np.array(
     [
         # Cam 1: ax, ay, bx, by, yaw, pitch, roll, tx, ty, tz
-        0.75, 1.45, 0.75, 1.45, 0.50, 0.85, 0.15, 0.35, 0.50, 0.40,
+        0.95, 1.50, 0.95, 1.50, 0.22, 0.30, 0.00, 0.00, 0.00, 0.00,
         # Cam 2: ax, ay, bx, by, yaw, pitch, roll, tx, ty, tz
-        0.75, 1.45, 0.75, 1.45, 0.50, 0.85, 0.15, 0.35, 0.50, 0.40,
+        0.95, 1.50, 0.95, 1.50, 0.22, 0.30, 0.00, 0.00, 0.00, 0.00,
     ],
     dtype=np.float64,
 )
@@ -120,10 +127,15 @@ def _default_dataset_path(calib_path: Path) -> Path:
 
 
 def expand_stereo_features(Z: np.ndarray) -> np.ndarray:
-    """Expand standardized 20-D features into 34-D `[linear(20), pose_cross(8), quad_keystone(6)]`."""
+    """Expand standardized 20-D features into 34-D with soft-clamped head translation."""
     single = Z.ndim == 1
-    arr = Z[np.newaxis, :] if single else Z
-    arr_c = np.clip(arr, -4.5, 4.5)
+    arr = np.array(Z[np.newaxis, :] if single else Z, dtype=np.float64, copy=True)
+
+    # Soft-saturate head translation (tx, ty, tz) & roll at +/- 2.2 sigma via tanh
+    # so chair slouches after calibration cannot extrapolate linearly to infinity.
+    pose_trans_cols = [6, 7, 8, 9, 16, 17, 18, 19]
+    arr[:, pose_trans_cols] = 2.2 * np.tanh(arr[:, pose_trans_cols] / 2.2)
+    arr_c = np.clip(arr, -4.0, 4.0)
 
     c1_dx = 0.5 * (arr_c[:, 0] + arr_c[:, 2])
     c1_dy = 0.5 * (arr_c[:, 1] + arr_c[:, 3])
@@ -132,14 +144,14 @@ def expand_stereo_features(Z: np.ndarray) -> np.ndarray:
 
     interactions = np.column_stack(
         [
-            c1_dx * arr_c[:, 4],
-            c1_dx * arr_c[:, 9],
-            c2_dx * arr_c[:, 14],
-            c2_dx * arr_c[:, 19],
-            c1_dy * arr_c[:, 5],
-            c1_dy * arr_c[:, 9],
-            c2_dy * arr_c[:, 15],
-            c2_dy * arr_c[:, 19],
+            c1_dx * arr_c[:, 4],   # cam1 iris_dx * cam1 yaw
+            c1_dx * arr_c[:, 9],   # cam1 iris_dx * cam1 tz
+            c2_dx * arr_c[:, 14],  # cam2 iris_dx * cam2 yaw
+            c2_dx * arr_c[:, 19],  # cam2 iris_dx * cam2 tz
+            c1_dy * arr_c[:, 5],   # cam1 iris_dy * cam1 pitch
+            c1_dy * arr_c[:, 9],   # cam1 iris_dy * cam1 tz
+            c2_dy * arr_c[:, 15],  # cam2 iris_dy * cam2 pitch
+            c2_dy * arr_c[:, 19],  # cam2 iris_dy * cam2 tz
             c1_dx * c1_dx,
             c1_dy * c1_dy,
             c1_dx * c1_dy,
@@ -148,7 +160,7 @@ def expand_stereo_features(Z: np.ndarray) -> np.ndarray:
             c2_dx * c2_dy,
         ]
     )
-    out = np.hstack([arr, interactions])
+    out = np.hstack([arr_c, interactions])
     return out[0] if single else out
 
 
@@ -322,6 +334,8 @@ class StereoGazeModel:
         self.bounds_min_y = float(bounds_min_y)
         self.bounds_max_x = float(bounds_max_x)
         self.bounds_max_y = float(bounds_max_y)
+        self.session_offset_x = 0.0
+        self.session_offset_y = 0.0
 
     @classmethod
     def fit(
@@ -456,8 +470,7 @@ class StereoGazeModel:
             bounds_max_y=float(layout.total_height - 1),
         )
 
-    def predict(self, feature_vec: np.ndarray) -> tuple[float, float]:
-        """Predict clamped global desktop `(x, y)` from a 20-D stereo feature vector (<0.15ms)."""
+    def _predict_raw(self, feature_vec: np.ndarray) -> tuple[float, float]:
         fv = np.asarray(feature_vec, dtype=np.float64)
         z = np.clip((fv - self.scaler_mean) / self.scaler_scale, -5.0, 5.0)
         phi = expand_stereo_features(z)
@@ -474,7 +487,28 @@ class StereoGazeModel:
             )
             x += float(np.dot(k_vec, self.rbf_dual_x))
             y += float(np.dot(k_vec, self.rbf_dual_y))
+        return x, y
 
+    def recenter_to(
+        self,
+        target_x: float,
+        target_y: float,
+        feature_vec: np.ndarray,
+        max_offset_px: float = 300.0,
+    ) -> tuple[float, float]:
+        """Snap session offset `(dx, dy)` so `feature_vec` predicts `(target_x, target_y)`."""
+        raw_x, raw_y = self._predict_raw(feature_vec)
+        dx = max(-max_offset_px, min(max_offset_px, float(target_x) - raw_x))
+        dy = max(-max_offset_px, min(max_offset_px, float(target_y) - raw_y))
+        self.session_offset_x = dx
+        self.session_offset_y = dy
+        return dx, dy
+
+    def predict(self, feature_vec: np.ndarray) -> tuple[float, float]:
+        """Predict clamped global desktop `(x, y)` from a 20-D stereo feature vector (<0.15ms)."""
+        x, y = self._predict_raw(feature_vec)
+        x += self.session_offset_x
+        y += self.session_offset_y
         x = max(self.bounds_min_x, min(self.bounds_max_x, x))
         y = max(self.bounds_min_y, min(self.bounds_max_y, y))
         return x, y
@@ -516,23 +550,35 @@ class StereoGazeModel:
         tmp.replace(path)
 
     @classmethod
-    def load(cls, path: Path = DEFAULT_CALIB_PATH) -> StereoGazeModel:
+    def load(
+        cls,
+        path: Path = DEFAULT_CALIB_PATH,
+        strip_pose_translation: bool = True,
+    ) -> StereoGazeModel:
         data = json.loads(path.read_text())
         if int(data.get("version", 1)) < 5 or len(data.get("coef_x", [])) != EXPANDED_FEATURE_DIM:
             raise ValueError(
                 f"Calibration file {path} uses older schema; please re-run `calibrate`."
             )
         bounds = data["bounds"]
+        coef_x = np.asarray(data["coef_x"], dtype=np.float64)
+        coef_y = np.asarray(data["coef_y"], dtype=np.float64)
+        rbf_centers = np.asarray(data.get("rbf_centers", []), dtype=np.float64)
+        if strip_pose_translation:
+            coef_x[list(_POSE_TRANSLATION_EXPANDED_COLS)] = 0.0
+            coef_y[list(_POSE_TRANSLATION_EXPANDED_COLS)] = 0.0
+            if rbf_centers.ndim == 2 and rbf_centers.shape[1] == STEREO_FEATURE_DIM:
+                rbf_centers[:, list(_POSE_TRANSLATION_RAW_COLS)] = 0.0
         return cls(
             cam1_by_id=data["cam1_by_id"],
             cam2_by_id=data["cam2_by_id"],
             scaler_mean=np.asarray(data["scaler_mean"], dtype=np.float64),
             scaler_scale=np.asarray(data["scaler_scale"], dtype=np.float64),
-            coef_x=np.asarray(data["coef_x"], dtype=np.float64),
+            coef_x=coef_x,
             intercept_x=float(data["intercept_x"]),
-            coef_y=np.asarray(data["coef_y"], dtype=np.float64),
+            coef_y=coef_y,
             intercept_y=float(data["intercept_y"]),
-            rbf_centers=np.asarray(data.get("rbf_centers", []), dtype=np.float64),
+            rbf_centers=rbf_centers,
             rbf_dual_x=np.asarray(data.get("rbf_dual_x", []), dtype=np.float64),
             rbf_dual_y=np.asarray(data.get("rbf_dual_y", []), dtype=np.float64),
             gamma_broad=float(data.get("gamma_broad", 0.1)),

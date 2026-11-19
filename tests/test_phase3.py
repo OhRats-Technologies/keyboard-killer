@@ -1306,3 +1306,239 @@ def test_command_splitter_and_compound_dispatch() -> None:
         assert "deterministic:enter" in res.detail
     finally:
         clicker.shutdown()
+
+
+def test_word_slicing_and_visual_icon_bank_and_save_icon(tmp_path) -> None:
+    from keyboard_killer.vision.ui_detector import (
+        VisualIconBank,
+        _slice_line_into_word_boxes,
+    )
+
+    # 1. Projection-valley word slicing splits merged menu bar into distinct word boxes
+    gray = np.full((40, 300), 240, dtype=np.uint8)
+    cv2.putText(gray, "File   Edit   Terminal", (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65, 20, 2)
+    sliced = _slice_line_into_word_boxes(gray, 10, 8, 280, 34, "File Edit Terminal")
+    words_map = {label: (x1, y1, x2, y2) for x1, y1, x2, y2, label, kind in sliced if kind == "word"}
+    assert {"File", "Edit", "Terminal"} <= set(words_map.keys())
+    assert words_map["File"][0] < words_map["Edit"][0] < words_map["Terminal"][0]
+
+    # 2. VisualIconBank learns a 36x36 gear icon patch and matches it in <3ms
+    desktop = _make_desktop_image()
+    bank = VisualIconBank(cache_dir=tmp_path)
+    gear_patch = desktop[502:538, 1085:1121].copy()
+    bank.save_icon_patch("gear icon", gear_patch)
+    edges = cv2.Canny(cv2.cvtColor(desktop, cv2.COLOR_BGR2GRAY), 45, 135)
+    hits = bank.find_matching_icons(desktop, edges)
+    assert any(lbl == "gear icon" and abs(x1 - 1085) <= 6 and abs(y1 - 502) <= 6 for x1, y1, _x2, _y2, lbl in hits)
+
+    # 3. "save icon as custom star" voice command saves 44x44 patch under gaze
+    det = GazeUIDetector(
+        capture_fn=lambda x, y, w, h: desktop[y : y + h, x : x + w].copy(),
+        enable_ocr=False,
+        icon_cache_dir=tmp_path,
+    )
+    clicker = GazeVLMClicker(detector=det, screen_w=1920, screen_h=1080)
+    ptr = DryRunPointerBackend(1920, 1080)
+    try:
+        router = VoiceCommandRouter(
+            pointer=ptr,
+            gaze_vlm_clicker=clicker,
+            gaze_state_provider=lambda: (1103.0, 520.0, None),
+        )
+        r_save = router.dispatch("save icon as custom gear")
+        assert r_save.route == "save_icon"
+        assert (tmp_path / "custom_gear.png").exists()
+    finally:
+        clicker.shutdown()
+
+
+def test_pose_invariant_rbf_and_online_gaze_learner(tmp_path) -> None:
+    from keyboard_killer.config import AppConfig
+    from keyboard_killer.vision.calibrator import (
+        _RBF_METRIC_WEIGHTS,
+        StereoGazeModel,
+        expand_stereo_features,
+    )
+    from keyboard_killer.vision.online_learner import OnlineGazeLearner
+
+    # 1. Pose translation & roll weights are zeroed in _RBF_METRIC_WEIGHTS
+    for idx in (6, 7, 8, 9, 16, 17, 18, 19):
+        assert _RBF_METRIC_WEIGHTS[idx] == 0.0
+
+    # 2. expand_stereo_features soft-saturates large head translations via tanh
+    z_extreme = np.zeros(STEREO_FEATURE_DIM, dtype=np.float64)
+    z_extreme[7] = 10.0  # 10-sigma chair slouch
+    exp = expand_stereo_features(z_extreme)
+    assert abs(exp[7]) <= 2.21
+
+    # 3. OnlineGazeLearner EW-RLS corrects a 90px posture slouch after 1-2 clicks
+    rng = np.random.default_rng(7)
+    X = rng.normal(0.0, 0.1, size=(48, STEREO_FEATURE_DIM))
+    Y = np.column_stack([960.0 + X[:, 0] * 1200.0, 540.0 + X[:, 1] * 900.0])
+    mon = MonitorInfo("DP-1", 0, 0, 1920, 1080, 1920, 1080, 1.0, True)
+    layout = DisplayLayout(monitors=(mon,), total_width=1920, total_height=1080)
+    base_model = StereoGazeModel.fit(
+        X=X,
+        targets_xy=Y,
+        cam1_by_id="cam1",
+        cam2_by_id="cam2",
+        monitor=mon,
+        layout=layout,
+    )
+    learner = OnlineGazeLearner(
+        model=base_model,
+        config=AppConfig(cam1_by_id="cam1", cam2_by_id="cam2"),
+        monitor=mon,
+        layout=layout,
+        calib_path=tmp_path / "stereo_calib.json",
+        refit_interval=100,
+    )
+    feat0 = np.zeros(STEREO_FEATURE_DIM, dtype=np.float64)
+    bx, by = learner.predict(feat0, now_ts=10.0)
+    learner.predict(feat0, now_ts=10.1)
+    true_tx, true_ty = bx + 80.0, by - 60.0
+    ok = learner.record_verified_interaction(
+        true_x=true_tx,
+        true_y=true_ty,
+        anchor_ts=10.2,
+        source="voice",
+    )
+    assert ok is True
+    nx, ny = learner.predict(feat0, now_ts=10.3)
+    assert abs(true_tx - nx) < abs(true_tx - bx) * 0.65
+    assert abs(true_ty - ny) < abs(true_ty - by) * 0.65
+    # Second click snaps error cleanly below 45% of initial slouch
+    learner.record_verified_interaction(
+        true_x=true_tx,
+        true_y=true_ty,
+        anchor_ts=10.4,
+        source="voice",
+    )
+    nx2, ny2 = learner.predict(feat0, now_ts=10.5)
+    assert abs(true_tx - nx2) < abs(true_tx - bx) * 0.48
+    assert abs(true_ty - ny2) < abs(true_ty - by) * 0.48
+
+    # Outlier click >240px away is rejected and never corrupts bias
+    bias_before = learner.bias_xy
+    rejected = learner.record_verified_interaction(
+        true_x=nx2 + 400.0,
+        true_y=ny2 + 400.0,
+        anchor_ts=10.6,
+        source="voice",
+    )
+    assert rejected is False
+    assert learner.bias_xy == bias_before
+
+
+def test_wayland_cursor_sprite_diff_and_scroll_handler() -> None:
+    from keyboard_killer.input.evdev_mouse_listener import WaylandCursorPositionResolver
+    from keyboard_killer.router.scroll_handler import parse_voice_scroll_command
+
+    # 1. Cursor sprite diff finds hardware cursor hotspot on synthetic frame pair
+    resolver = WaylandCursorPositionResolver(allow_screenshot_diff=True)
+    img0 = np.full((400, 600, 3), 50, dtype=np.uint8)
+    img1 = img0.copy()
+    cv2.rectangle(img1, (320, 180), (336, 200), (250, 250, 250), -1)
+    calls = [img0, img1]
+    resolver._dbus_full_screenshot = lambda **_kw: calls.pop(0)  # type: ignore[method-assign]
+    hotspot = resolver.resolve_cursor_xy(300.0, 190.0)
+    assert hotspot is not None
+    assert 320 <= hotspot[0] <= 336 and 180 <= hotspot[1] <= 200
+
+    # 2. Voice scroll parser + Firefox DOM scroll + uinput fallback
+    s_auto = parse_voice_scroll_command("auto scroll down")
+    assert s_auto is not None and s_auto.continuous == "start" and s_auto.direction == "down"
+
+    s_little = parse_voice_scroll_command("scroll down a little")
+    assert s_little is not None and s_little.amount == "small" and s_little.wheel_ticks == -3
+
+    s_top = parse_voice_scroll_command("scroll to top")
+    assert s_top is not None and s_top.direction == "top" and s_top.wheel_ticks == 25
+
+    class _FakeScrollFirefoxBridge:
+        is_connected = True
+
+        def __init__(self) -> None:
+            self.scroll_calls: list[tuple[float, float, str, str, str]] = []
+
+        def scroll_page(
+            self,
+            gaze_x: float,
+            gaze_y: float,
+            direction: str = "down",
+            amount: str = "normal",
+            continuous: str = "",
+        ) -> bool:
+            self.scroll_calls.append((gaze_x, gaze_y, direction, amount, continuous))
+            return True
+
+    ff = _FakeScrollFirefoxBridge()
+    ptr = DryRunPointerBackend(1920, 1080)
+    router = VoiceCommandRouter(
+        pointer=ptr,
+        gaze_provider=lambda: (750.0, 420.0),
+        firefox_bridge=ff,  # type: ignore[arg-type]
+    )
+    res_dom = router.dispatch("scroll down a little")
+    assert res_dom.route == "scroll_dom"
+    assert ff.scroll_calls == [(750.0, 420.0, "down", "small", "")]
+
+    # Native app fallback when Firefox is not connected
+    ff.is_connected = False
+    res_native = router.dispatch("scroll down a little")
+    assert res_native.route == "scroll"
+    assert ptr.last_abs == (750.0, 420.0)
+    assert ptr.scrolls[-1] == (0, -3)
+
+
+def test_pose_translation_stripping_on_load_recenter_and_gaze_warped_scroll(tmp_path) -> None:
+    from keyboard_killer.vision.calibrator import (
+        _POSE_TRANSLATION_EXPANDED_COLS,
+        StereoGazeModel,
+    )
+
+    rng = np.random.default_rng(11)
+    X = rng.normal(0.0, 0.1, size=(48, STEREO_FEATURE_DIM))
+    Y = np.column_stack([960.0 + X[:, 0] * 1200.0, 540.0 + X[:, 1] * 900.0])
+    mon = MonitorInfo("DP-1", 0, 0, 1920, 1080, 1920, 1080, 1.0, True)
+    layout = DisplayLayout(monitors=(mon,), total_width=1920, total_height=1080)
+    m = StereoGazeModel.fit(X, Y, "cam1", "cam2", mon, layout)
+    # Simulate an older stereo_calib.json with parasitic tx/ty/tz weights baked in
+    m.coef_x[7] = 250.0
+    m.coef_y[8] = -250.0
+    calib_file = tmp_path / "stereo_calib.json"
+    m.save(calib_file)
+
+    loaded = StereoGazeModel.load(calib_file, strip_pose_translation=True)
+    for col in _POSE_TRANSLATION_EXPANDED_COLS:
+        assert loaded.coef_x[col] == 0.0
+        assert loaded.coef_y[col] == 0.0
+
+    # Chair slouch (+5 sigma tx/ty/tz) produces zero drift on loaded model
+    f_neutral = np.zeros(STEREO_FEATURE_DIM, dtype=np.float64)
+    f_slouch = f_neutral.copy()
+    f_slouch[[7, 8, 9, 17, 18, 19]] = 0.25
+    assert loaded.predict(f_neutral) == loaded.predict(f_slouch)
+
+    # Manual "recenter gaze" snaps prediction to monitor center (960, 540)
+    ptr = DryRunPointerBackend(5360, 1440)
+    router = VoiceCommandRouter(
+        pointer=ptr,
+        gaze_provider=lambda: (2600.0, 700.0),
+        on_recenter_gaze=lambda: f"offset={loaded.recenter_to(960.0, 540.0, f_neutral)}",
+    )
+    r_rec = router.dispatch("recenter gaze")
+    assert r_rec.route == "recenter_gaze"
+    rx, ry = loaded.predict(f_neutral)
+    assert abs(rx - 960.0) < 1.0 and abs(ry - 540.0) < 1.0
+
+    # "sync window" routes to sync_window (never hijacked by "<app> window" OS overview search)
+    r_sync = router.dispatch("sync window")
+    assert r_sync.route == "sync_window"
+    assert ptr.last_abs == (2600.0, 700.0)
+
+    # Non-browser "scroll down" warps pointer to gaze region before scrolling
+    r_scroll = router.dispatch("scroll down")
+    assert r_scroll.route == "scroll"
+    assert ptr.last_abs == (2600.0, 700.0)
+    assert ptr.scrolls[-1] == (0, -6)

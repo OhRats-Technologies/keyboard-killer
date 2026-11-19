@@ -214,7 +214,11 @@ class GazeVLMClicker:
         gaze_y: float,
         stereo_feat: np.ndarray | None = None,
     ) -> None:
-        """Capture ROI + run OCR and fetch Firefox DOM candidates in parallel at speech onset."""
+        """Fetch Firefox DOM candidates (and pre-warm synthetic/silent ROI capture) at speech onset.
+
+        On real GNOME Wayland, speculative portal screenshots are intentionally skipped here so
+        speaking non-click commands or Firefox DOM commands never triggers screen flash effects.
+        """
         feat_copy = stereo_feat.copy() if stereo_feat is not None else None
         mon_x, mon_y, mon_w, mon_h = self._monitor_rect(gaze_x, gaze_y)
         with self._lock:
@@ -232,16 +236,19 @@ class GazeVLMClicker:
                 )
             else:
                 self._pending_dom_future = None
-            self._pending_snapshot = self._pool.submit(
-                self.detector.capture_and_annotate,
-                gaze_x,
-                gaze_y,
-                self.screen_w,
-                self.screen_h,
-                self.crop_w,
-                self.crop_h,
-                feat_copy,
-            )
+            if self.detector._capture_fn is not None:
+                self._pending_snapshot = self._pool.submit(
+                    self.detector.capture_and_annotate,
+                    gaze_x,
+                    gaze_y,
+                    self.screen_w,
+                    self.screen_h,
+                    self.crop_w,
+                    self.crop_h,
+                    feat_copy,
+                )
+            else:
+                self._pending_snapshot = None
 
     def clear_pending_snapshot(self) -> None:
         """Discard any unused pre-warmed snapshot or DOM candidate future."""
@@ -339,6 +346,7 @@ class GazeVLMClicker:
         self,
         intent: ParsedVoiceIntent,
         snapshot: GazeROISnapshot,
+        app_id: str = "",
     ) -> tuple[int, int] | None:
         """Query local Ollama gemma4:e4b with the Set-of-Marks crop and box directory."""
         if not snapshot.boxes or not snapshot.som_png_bytes:
@@ -397,6 +405,18 @@ class GazeVLMClicker:
 
         for b in snapshot.boxes:
             if b.mark_id == selection.target_id:
+                # If gemma4:e4b identified an unlabeled visual icon/image (e.g. "gear icon",
+                # "play button", "folder"), auto-cache its visual template so future clicks take <3ms!
+                if not b.label and b.width <= 80 and b.height <= 80 and hasattr(self.detector, "icon_bank"):
+                    lx1 = max(0, b.global_x1 - snapshot.crop_x)
+                    ly1 = max(0, b.global_y1 - snapshot.crop_y)
+                    lx2 = min(snapshot.crop_w, b.global_x2 - snapshot.crop_x)
+                    ly2 = min(snapshot.crop_h, b.global_y2 - snapshot.crop_y)
+                    icon_patch = snapshot.raw_bgr[ly1:ly2, lx1:lx2]
+                    self.detector.icon_bank.save_icon_patch(
+                        intent.target_query, icon_patch, app_id=app_id
+                    )
+
                 cx, cy = b.center_xy
                 tx = max(0, min(self.screen_w - 1, cx + int(selection.offset_dx)))
                 ty = max(0, min(self.screen_h - 1, cy + int(selection.offset_dy)))
@@ -430,6 +450,10 @@ class GazeVLMClicker:
             return None
 
         snap_fut, dom_fut, onset = self._pop_pending_state()
+        win_ctx = self.detector.capturer.get_active_window_context(
+            self.screen_w, self.screen_h, desktop_atspi=self.desktop_atspi
+        )
+        app_id = win_ctx.app_id
         firefox_active = self._is_firefox_active()
 
         # Tier 0: Fast Deterministic Firefox DOM Match (only when Firefox is focused)
@@ -479,8 +503,55 @@ class GazeVLMClicker:
                     f"Tier-0.5 Desktop AT-SPI ('{label}', invoked={invoked})",
                 )
 
+        # Window-scoped or Single-Pass Monitor-Scoped OCR for non-browser / Electron apps
+        # (eliminates redundant 680x480 + monitor two-pass OCR when gaze is a coarse region guide)
+        window_rect = win_ctx.rect
+        use_window_scope = (
+            not firefox_active
+            and window_rect is not None
+            and window_rect[0] <= current_gaze_x <= window_rect[0] + window_rect[2]
+            and window_rect[1] <= current_gaze_y <= window_rect[1] + window_rect[3]
+        )
+        single_pass_monitor = (
+            not firefox_active
+            and not use_window_scope
+            and snap_fut is None
+            and self.detector._capture_fn is None
+        )
+
+        if self.layout is not None:
+            mon = monitor_at_point(self.layout, current_gaze_x, current_gaze_y)
+            t3_x, t3_y, t3_w, t3_h = mon.x, mon.y, mon.width, mon.height
+        else:
+            t3_x, t3_y, t3_w, t3_h = 0, 0, self.screen_w, self.screen_h
+
         if snap_fut is not None:
             snapshot = snap_fut.result(timeout=4.0)
+        elif use_window_scope and window_rect is not None:
+            wx, wy, ww, wh = window_rect
+            snapshot = self.detector.capture_and_annotate(
+                current_gaze_x,
+                current_gaze_y,
+                self.screen_w,
+                self.screen_h,
+                crop_w=ww,
+                crop_h=wh,
+                stereo_feat=current_stereo_feat,
+                crop_origin=(wx, wy),
+                max_som_boxes=48,
+            )
+        elif single_pass_monitor:
+            snapshot = self.detector.capture_and_annotate(
+                current_gaze_x,
+                current_gaze_y,
+                self.screen_w,
+                self.screen_h,
+                crop_w=t3_w,
+                crop_h=t3_h,
+                stereo_feat=current_stereo_feat,
+                crop_origin=(t3_x, t3_y),
+                max_som_boxes=48,
+            )
         else:
             snapshot = self.detector.capture_and_annotate(
                 current_gaze_x,
@@ -499,6 +570,10 @@ class GazeVLMClicker:
         if fast_box is not None:
             target_xy = fast_box.center_xy
             self._harvest_calibration_point(snapshot, target_xy)
+            if use_window_scope and app_id:
+                return intent, target_xy, f"Tier-1 Window OCR ({app_id}: '{fast_box.label}')"
+            if single_pass_monitor and app_id:
+                return intent, target_xy, f"Tier-1 Monitor OCR ({app_id}: '{fast_box.label}')"
             return intent, target_xy, f"Tier-1 Keyword ('{fast_box.label}')"
 
         # Tier 0.5b: Firefox DOM LLM Fallback (only after Tier-1 visible-screen OCR missed)
@@ -510,29 +585,26 @@ class GazeVLMClicker:
                 return self._finish_dom_match(intent, dom_llm_match, onset, current_gaze_x, current_gaze_y, current_stereo_feat)
 
         # Tier 3a: Fast Monitor-Wide Keyword OCR (reuses portal full_desktop_bgr in 0ms) before VLM
-        if self.layout is not None:
-            mon = monitor_at_point(self.layout, current_gaze_x, current_gaze_y)
-            t3_x, t3_y, t3_w, t3_h = mon.x, mon.y, mon.width, mon.height
+        if single_pass_monitor:
+            full_snap = snapshot
         else:
-            t3_x, t3_y, t3_w, t3_h = 0, 0, self.screen_w, self.screen_h
-
-        full_snap = self.detector.capture_and_annotate(
-            gaze_x=current_gaze_x,
-            gaze_y=current_gaze_y,
-            screen_w=self.screen_w,
-            screen_h=self.screen_h,
-            crop_w=t3_w,
-            crop_h=t3_h,
-            stereo_feat=None,
-            crop_origin=(t3_x, t3_y),
-            cached_full_bgr=snapshot.full_desktop_bgr,
-            max_som_boxes=48,
-        )
-        fast_full = self._tier1_fast_keyword_match(
-            intent.target_query, full_snap, search_all_text=True
-        )
-        if fast_full is not None:
-            return intent, fast_full.center_xy, f"Tier-3 Fullscreen Keyword ('{fast_full.label}')"
+            full_snap = self.detector.capture_and_annotate(
+                gaze_x=current_gaze_x,
+                gaze_y=current_gaze_y,
+                screen_w=self.screen_w,
+                screen_h=self.screen_h,
+                crop_w=t3_w,
+                crop_h=t3_h,
+                stereo_feat=None,
+                crop_origin=(t3_x, t3_y),
+                cached_full_bgr=snapshot.full_desktop_bgr,
+                max_som_boxes=48,
+            )
+            fast_full = self._tier1_fast_keyword_match(
+                intent.target_query, full_snap, search_all_text=True
+            )
+            if fast_full is not None:
+                return intent, fast_full.center_xy, f"Tier-3 Fullscreen Keyword ('{fast_full.label}')"
 
         # If multi-monitor and still not found on gaze monitor, try full virtual desktop OCR before VLM
         all_snap: GazeROISnapshot | None = None
@@ -556,17 +628,17 @@ class GazeVLMClicker:
                 return intent, fast_all.center_xy, f"Tier-3 Desktop Keyword ('{fast_all.label}')"
 
         # Tier 2: Ollama gemma4:e4b Set-of-Marks Grounding on Gaze Crop (for unlabeled icons)
-        vlm_xy = self._tier2_gemma4_som_grounding(intent, snapshot)
+        vlm_xy = self._tier2_gemma4_som_grounding(intent, snapshot, app_id=app_id)
         if vlm_xy is not None:
             self._harvest_calibration_point(snapshot, vlm_xy)
             return intent, vlm_xy, f"Tier-2 {self.model_name} Gaze-SoM"
 
-        vlm_full = self._tier2_gemma4_som_grounding(intent, full_snap)
+        vlm_full = self._tier2_gemma4_som_grounding(intent, full_snap, app_id=app_id)
         if vlm_full is not None:
             return intent, vlm_full, f"Tier-3 Fullscreen {self.model_name} SoM"
 
         if all_snap is not None:
-            vlm_all = self._tier2_gemma4_som_grounding(intent, all_snap)
+            vlm_all = self._tier2_gemma4_som_grounding(intent, all_snap, app_id=app_id)
             if vlm_all is not None:
                 return intent, vlm_all, f"Tier-3 Desktop {self.model_name} SoM"
 

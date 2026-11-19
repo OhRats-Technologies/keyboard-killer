@@ -18,6 +18,7 @@ from keyboard_killer.ipc.state import SharedGazeReader
 from keyboard_killer.router.command_splitter import execute_compound_voice_commands
 from keyboard_killer.router.gaze_vlm_clicker import GazeVLMClicker, parse_voice_click_command
 from keyboard_killer.router.llm_agent import LLMAgent
+from keyboard_killer.router.scroll_handler import parse_voice_scroll_command
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ class VoiceCommandRouter:
         | None = None,
         on_before_click: Callable[[int, int], None] | None = None,
         firefox_bridge: FirefoxDOMBridge | None = None,
+        on_recenter_gaze: Callable[[], str] | None = None,
     ) -> None:
         self.pointer = pointer
         self.llm_agent = llm_agent
@@ -63,6 +65,7 @@ class VoiceCommandRouter:
         self.gaze_vlm_clicker = gaze_vlm_clicker
         self.gaze_state_provider = gaze_state_provider
         self.on_before_click = on_before_click
+        self.on_recenter_gaze = on_recenter_gaze
         self.firefox_bridge = (
             firefox_bridge
             if firefox_bridge is not None
@@ -267,6 +270,12 @@ class VoiceCommandRouter:
         if self.on_before_click is not None:
             self.on_before_click(tx, ty)
         self.pointer.move_absolute(tx, ty)
+        if (
+            self.firefox_bridge is not None
+            and self.firefox_bridge.is_connected
+            and hasattr(self.firefox_bridge, "send_pointer_anchor")
+        ):
+            self.firefox_bridge.send_pointer_anchor(tx, ty)
         if not isinstance(self.pointer, DryRunPointerBackend):
             time.sleep(0.025)
 
@@ -499,11 +508,100 @@ class VoiceCommandRouter:
         if norm not in ("switch tab", "switch window", "switch app", "cycle window", "next window", "previous window", "prev window", "last window"):
             self._window_cycle_step = 0
 
+        # Explicit manual window-origin sync ("sync window" / "align window") for floating Wayland Firefox
+        # Must run BEFORE _handle_tab_or_window_command so "<app> window" doesn't treat "sync" as an app name!
+        if norm in ("sync window", "align window"):
+            if self.gaze_vlm_clicker is not None:
+                self.gaze_vlm_clicker.clear_pending_snapshot()
+            gx, gy, _ = self._current_gaze_and_feat()
+            tx, ty = int(gx), int(gy)
+            if (
+                self.firefox_bridge is not None
+                and self.firefox_bridge.is_connected
+                and hasattr(self.firefox_bridge, "send_pointer_anchor")
+            ):
+                self.firefox_bridge.send_pointer_anchor(tx, ty)
+            self.pointer.move_absolute(tx, ty)
+            if not isinstance(self.pointer, DryRunPointerBackend):
+                time.sleep(0.02)
+                self.pointer.move_relative(1.0, 0.0)
+            return DispatchResult("sync_window", raw, f"Anchored Firefox window origin at ({tx}, {ty})")
+
         tab_res = self._handle_tab_or_window_command(norm, raw)
         if tab_res is not None:
             if self.gaze_vlm_clicker is not None:
                 self.gaze_vlm_clicker.clear_pending_snapshot()
             return tab_res
+
+        # Voice command: "save icon as <name>" or "remember icon as <name>"
+        if norm.startswith(("save icon as ", "remember icon as ")) and self.gaze_vlm_clicker is not None:
+            self.gaze_vlm_clicker.clear_pending_snapshot()
+            icon_name = re.split(r"\bas\b", raw, maxsplit=1, flags=re.IGNORECASE)[1].strip(" .,!?\"'")
+            gx, gy, _ = self._current_gaze_and_feat()
+            cx, cy = int(gx), int(gy)
+            det = self.gaze_vlm_clicker.detector
+            x0, y0 = max(0, cx - 22), max(0, cy - 22)
+            if det._capture_fn is not None:
+                patch = det._capture_fn(x0, y0, 44, 44)
+            else:
+                patch = det.capturer.capture_rect(x0, y0, 44, 44)
+            det.icon_bank.save_icon_patch(icon_name, patch)
+            return DispatchResult("save_icon", raw, f"Learned visual icon template for '{icon_name}'")
+
+        # Explicit manual gaze recenter command ("recenter gaze" / "calibrate center")
+        if norm in ("recenter gaze", "recenter", "calibrate center"):
+            if self.gaze_vlm_clicker is not None:
+                self.gaze_vlm_clicker.clear_pending_snapshot()
+            if self.on_recenter_gaze is not None:
+                detail = self.on_recenter_gaze()
+                return DispatchResult("recenter_gaze", raw, detail)
+            return DispatchResult("recenter_gaze", raw, "No active gaze model to recenter.")
+
+        # Gaze-aware Firefox DOM scrolling & gaze-warped native app scrolling
+        scroll_cmd = parse_voice_scroll_command(raw)
+        if scroll_cmd is not None:
+            if self.gaze_vlm_clicker is not None:
+                self.gaze_vlm_clicker.clear_pending_snapshot()
+            gx, gy, _ = self._current_gaze_and_feat()
+            firefox_active = (
+                self.gaze_vlm_clicker._is_firefox_active()
+                if self.gaze_vlm_clicker is not None
+                else True
+            )
+            if (
+                firefox_active
+                and self.firefox_bridge is not None
+                and self.firefox_bridge.is_connected
+                and hasattr(self.firefox_bridge, "scroll_page")
+            ):
+                if self.firefox_bridge.scroll_page(
+                    gaze_x=gx,
+                    gaze_y=gy,
+                    direction=scroll_cmd.direction,
+                    amount=scroll_cmd.amount,
+                    continuous=scroll_cmd.continuous,
+                ):
+                    return DispatchResult(
+                        "scroll_dom",
+                        raw,
+                        f"Firefox DOM scroll ({scroll_cmd.direction}, amount={scroll_cmd.amount}, continuous='{scroll_cmd.continuous}')",
+                    )
+            has_live_gaze = (
+                self.gaze_state_provider is not None or self.gaze_provider is not None
+            )
+            if norm not in self._deterministic_map or has_live_gaze:
+                if scroll_cmd.wheel_ticks != 0:
+                    if has_live_gaze:
+                        self.pointer.move_absolute(int(gx), int(gy))
+                    if scroll_cmd.direction in ("left", "right"):
+                        self.pointer.scroll(dx=scroll_cmd.wheel_ticks, dy=0)
+                    else:
+                        self.pointer.scroll(dx=0, dy=scroll_cmd.wheel_ticks)
+                return DispatchResult(
+                    "scroll",
+                    raw,
+                    f"scroll:{scroll_cmd.direction}:{scroll_cmd.amount}:{scroll_cmd.continuous}",
+                )
 
         if norm in self._deterministic_map:
             if self.gaze_vlm_clicker is not None:

@@ -21,6 +21,7 @@ from keyboard_killer.audio.stt_engine import (
     resolve_hotkey_code,
 )
 from keyboard_killer.config import AppConfig, get_display_layout
+from keyboard_killer.input.evdev_mouse_listener import EvdevMouseClickHarvester
 from keyboard_killer.input.uinput_device import (
     DryRunPointerBackend,
     PointerBackend,
@@ -41,6 +42,7 @@ from keyboard_killer.vision.cursor_gimbal import (
     run_vision_loop,
 )
 from keyboard_killer.vision.desktop_atspi import LinuxDesktopAccessibilityBridge
+from keyboard_killer.vision.online_learner import OnlineGazeLearner
 from keyboard_killer.vision.ui_detector import GazeUIDetector, monitor_at_point
 
 
@@ -59,15 +61,14 @@ def run_combined_daemon(
     if not enable_vision and not enable_audio:
         raise ValueError("At least one of vision or audio must be enabled.")
 
+    layout = get_display_layout()
     model: StereoGazeModel | None = None
     if enable_vision:
         if calib_path is None or not calib_path.exists():
             raise FileNotFoundError(
                 f"Calibration file not found: {calib_path}. Run `uv run keyboard-killer calibrate` first."
             )
-        model = StereoGazeModel.load(calib_path)
-
-    layout = get_display_layout()
+        model = StereoGazeModel.load(calib_path, strip_pose_translation=True)
     pointer: PointerBackend = (
         DryRunPointerBackend(layout.total_width, layout.total_height)
         if dry_run
@@ -126,8 +127,21 @@ def run_combined_daemon(
     event_stop = threading.Event()
     event_thread: threading.Thread | None = None
     vlm_clicker: GazeVLMClicker | None = None
+    mouse_harvester: EvdevMouseClickHarvester | None = None
+
+    def _current_gaze_xy_fallback() -> tuple[float, float]:
+        st = _inproc_vlm_state()
+        if st is not None:
+            return float(st[0]), float(st[1])
+        gz = _inproc_gaze()
+        if gz is not None:
+            return float(gz[0]), float(gz[1])
+        mon = layout.primary
+        return float(mon.x + mon.width * 0.5), float(mon.y + mon.height * 0.5)
 
     try:
+        # Automatic online learning and passive click harvesting are disabled by default so
+        # look-then-speak saccades never degrade calibration. Use "recenter gaze" for manual snap.
         if config.firefox_bridge_enabled:
             firefox_bridge = FirefoxDOMBridge(port=config.firefox_bridge_port)
             firefox_bridge.start()
@@ -149,6 +163,7 @@ def run_combined_daemon(
             if config.gaze_vlm_enabled:
                 detector = GazeUIDetector()
                 desktop_atspi = LinuxDesktopAccessibilityBridge()
+
                 vlm_clicker = GazeVLMClicker(
                     detector=detector,
                     model_name=config.gaze_vlm_model,
@@ -179,6 +194,18 @@ def run_combined_daemon(
                 ollama_model=config.ollama_model,
                 gemini_model=config.gemini_model,
             )
+            def _on_recenter_gaze() -> str:
+                if model is None:
+                    return "Vision loop not active."
+                st = _inproc_vlm_state()
+                if st is None or st[2] is None:
+                    return "No current face/eye observation to recenter."
+                mon = monitor_at_point(layout, st[0], st[1])
+                cx = mon.x + mon.width * 0.5
+                cy = mon.y + mon.height * 0.5
+                dx, dy = model.recenter_to(cx, cy, st[2])
+                return f"Recentered gaze to monitor center ({cx:.0f}, {cy:.0f}) with offset=({dx:+.0f}, {dy:+.0f})px"
+
             router = VoiceCommandRouter(
                 pointer=pointer,
                 llm_agent=llm,
@@ -188,6 +215,8 @@ def run_combined_daemon(
                 gaze_vlm_clicker=vlm_clicker,
                 gaze_state_provider=_inproc_vlm_state if enable_vision else None,
                 on_before_click=_on_before_click,
+                firefox_bridge=firefox_bridge,
+                on_recenter_gaze=_on_recenter_gaze if enable_vision else None,
             )
 
             def _prewarm_gaze_vlm() -> None:
@@ -337,6 +366,8 @@ def run_combined_daemon(
         out.print("\nStopped.")
     finally:
         event_stop.set()
+        if mouse_harvester is not None:
+            mouse_harvester.stop()
         if event_thread is not None and event_thread.is_alive():
             event_thread.join(timeout=1.0)
         if active_listener is not None:

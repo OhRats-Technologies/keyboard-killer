@@ -3,6 +3,29 @@
 const WS_URL = "ws://127.0.0.1:8765";
 let socket = null;
 let reconnectTimer = null;
+let lastHudTabId = null;
+
+function hideHudOnTab(tabId) {
+  if (typeof tabId !== "number") return;
+  browser.tabs.sendMessage(tabId, { type: "hide_hud" }).catch(() => {});
+}
+
+browser.tabs.onActivated.addListener((activeInfo) => {
+  if (lastHudTabId !== null && lastHudTabId !== activeInfo.tabId) {
+    hideHudOnTab(lastHudTabId);
+    lastHudTabId = null;
+  }
+});
+
+browser.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === browser.windows.WINDOW_ID_NONE && lastHudTabId !== null) {
+    hideHudOnTab(lastHudTabId);
+    lastHudTabId = null;
+  } else if (lastHudTabId !== null) {
+    hideHudOnTab(lastHudTabId);
+    lastHudTabId = null;
+  }
+});
 
 function connectWebSocket() {
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
@@ -94,13 +117,43 @@ function connectWebSocket() {
         tabs = await browser.tabs.query({ active: true, currentWindow: true });
       }
       if (!tabs || tabs.length === 0 || !tabs[0].id) {
+        if (lastHudTabId !== null) {
+          hideHudOnTab(lastHudTabId);
+          lastHudTabId = null;
+        }
         if (msg.req_id) {
           sendResponse({ req_id: msg.req_id, ok: false, error: "No active tab" });
         }
         return;
       }
 
-      const activeTabId = tabs[0].id;
+      const activeTab = tabs[0];
+      const activeTabId = activeTab.id;
+
+      // For gaze_update HUD overlays, only show on the single currently focused Firefox window/tab.
+      if (msg.type === "gaze_update") {
+        let winFocused = true;
+        if (typeof activeTab.windowId === "number") {
+          try {
+            const win = await browser.windows.get(activeTab.windowId);
+            winFocused = Boolean(win && win.focused);
+          } catch (_e) {
+            winFocused = false;
+          }
+        }
+        if (!winFocused) {
+          if (lastHudTabId !== null) {
+            hideHudOnTab(lastHudTabId);
+            lastHudTabId = null;
+          }
+          return;
+        }
+        if (lastHudTabId !== null && lastHudTabId !== activeTabId) {
+          hideHudOnTab(lastHudTabId);
+        }
+        lastHudTabId = activeTabId;
+      }
+
       let response;
       try {
         response = await browser.tabs.sendMessage(activeTabId, msg);
@@ -145,5 +198,11 @@ function sendResponse(payload) {
     socket.send(JSON.stringify(payload));
   }
 }
+
+browser.runtime.onMessage.addListener((msg) => {
+  if (msg && msg.type === "passive_mouse_click") {
+    sendResponse(msg);
+  }
+});
 
 connectWebSocket();
