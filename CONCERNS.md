@@ -15,7 +15,7 @@ Register of observed concerns for Keyboard-Killer, with the 2026-11-19 implement
 |---|---|---|---|---|
 | C-01 | Setup | Camera binding is hard-coded to one specific C270 and one specific CAM 313 | High | Partial |
 | C-02 | Setup | Calibration is a mandatory, GUI-only gate before vision | High (Blocker on headless) | Open |
-| C-03 | Setup | `check-system` covers only cameras, uinput, and display | Medium | Resolved |
+| C-03 | Setup | `check-system` covers only cameras, uinput, and display | Medium | Partial |
 | C-04 | Setup | System dependencies (PortAudio, CUDA, AT-SPI, GUI, `gdbus`) are undocumented | High | Partial |
 | C-05 | Setup | LLM/VLM provisioning is manual and implicit | High (full features) | Resolved |
 | C-06 | Setup | Firefox extension has no install/package path | Medium | Open |
@@ -41,8 +41,8 @@ This is the post-implementation view. "Resolved" means the shipped behavior remo
 
 | Status | Concerns | Summary |
 |---|---|---|
-| **Resolved** | C-03, C-05, C-09, C-12, L-01, L-02, L-03, L-06, L-08, L-11, L-12, L-13 | `doctor` and one capability report; provider layer; CPU int8 default; Linux packaging; PySide6 shell; resumable onboarding; permissions rows; model/provider status; SQLite history; settings UI; practice/ready; `.deb`/AppImage |
-| **Partial** | C-01, C-04, C-07, C-08, C-10, P-02, U-03, U-04, L-04, L-05, L-07, L-09, L-10, L-14 | Stable camera discovery/picker (defaults still old); dependency docs/packaging (hardware still needs checks); screen permission reported but first capture prompts; STT download with progress/fallback; settings expose defaults; tray/toast fallback (no persistent Wayland overlay); camera previews without face-found/quality; calibration still a separate OpenCV window; X11 overlay but Wayland fallback; pause stops the daemon; some daemon errors remain CLI strings; tokens/light/dark but no i18n or full accessibility audit |
+| **Resolved** | C-05, C-09, C-12, L-01, L-02, L-03, L-06, L-08, L-11, L-12, L-13 | Provider layer; CPU int8 default; Linux packaging; PySide6 shell; resumable onboarding; permissions rows; model/provider status; SQLite history; settings UI; practice/ready; `.deb`/AppImage |
+| **Partial** | C-01, C-03, C-04, C-07, C-08, C-10, P-02, U-03, U-04, L-04, L-05, L-07, L-09, L-10, L-14 | `doctor` is the complete check while legacy `check-system` remains narrow; stable camera discovery/picker (defaults still old); dependency docs/packaging (hardware still needs checks); screen permission reported but first capture prompts; STT download with progress/fallback; settings expose defaults; tray/toast fallback (no persistent Wayland overlay); camera previews without face-found/quality; calibration still a separate OpenCV window; X11 overlay but Wayland fallback; pause stops the daemon; some daemon errors remain CLI strings; tokens/light/dark but no i18n or full accessibility audit |
 | **Open** | C-02, C-06, C-11, P-01, U-01, U-02, U-05, U-06, U-07 | Calibration still a mandatory GUI gate; Firefox extension install/signing; `run-voice` still initializes the VLM; always-on mic default; named-target accuracy/tab ordinals/eval harness/demo validity not addressed |
 
 ### Evidence
