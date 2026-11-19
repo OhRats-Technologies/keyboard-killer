@@ -624,6 +624,19 @@ def run_voice(
     )
 
 
+@app.command("ui")
+def ui(
+    theme: str = typer.Option("system", help="Theme: system | light | dark"),
+    no_previews: bool = typer.Option(False, help="Disable live camera previews (headless/screenshots)"),
+) -> None:
+    """Open the main window, tray, setup, settings, history, and diagnostics."""
+    from keyboard_killer.ui.app import run_ui
+
+    raise typer.Exit(
+        run_ui(theme=None if theme == "system" else theme, enable_previews=not no_previews)
+    )
+
+
 @app.command("doctor")
 def doctor(
     json_output: bool = typer.Option(False, "--json", help="Emit one JSON document for support/UI"),
