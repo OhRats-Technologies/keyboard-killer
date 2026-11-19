@@ -3,23 +3,29 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+from keyboard_killer.config.migrations import ensure_migrated
+from keyboard_killer.config.paths import AppPaths, current_paths, default_paths
 
 DEFAULT_CAM1_ID = "/dev/v4l/by-id/usb-046d_0825_4BEC6610-video-index0"
 DEFAULT_CAM2_ID = (
     "/dev/v4l/by-id/usb-Sunplus_IT_Co_Live_Streamer_CAM_313_20200529002-video-index0"
 )
 
-CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "keyboard-killer"
-CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "keyboard-killer"
+_PATHS = default_paths()
 
-DEFAULT_CONFIG_PATH = CONFIG_DIR / "config.json"
-DEFAULT_CALIB_PATH = CONFIG_DIR / "stereo_calib.json"
-DEFAULT_LANDMARKER_MODEL_PATH = CACHE_DIR / "face_landmarker.task"
+CONFIG_DIR = _PATHS.config_dir
+CACHE_DIR = _PATHS.cache_dir
+
+# Kept as import-time constants for CLI option defaults and existing imports.
+# New code should use `current_paths()` so `KEYBOARD_KILLER_HOME` applies.
+DEFAULT_CONFIG_PATH = _PATHS.settings_path
+DEFAULT_CALIB_PATH = _PATHS.calibration_path
+DEFAULT_LANDMARKER_MODEL_PATH = _PATHS.landmarker_path
 
 FACE_LANDMARKER_URL = (
     "https://storage.googleapis.com/mediapipe-models/face_landmarker/"
@@ -103,15 +109,29 @@ class AppConfig:
     firefox_bridge_enabled: bool = True
     firefox_bridge_port: int = 8765
 
-    def save(self, path: Path = DEFAULT_CONFIG_PATH) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(asdict(self), indent=2) + "\n")
+    def save(self, path: Path | None = None) -> None:
+        target = Path(path) if path is not None else current_paths().settings_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(asdict(self), indent=2) + "\n")
 
     @classmethod
-    def load(cls, path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:
-        if not path.exists():
+    def load(cls, path: Path | None = None) -> AppConfig:
+        if path is None:
+            paths = current_paths()
+            try:
+                ensure_migrated(paths)
+            except OSError:
+                # A read-only config directory must not prevent startup; the legacy
+                # file below is still readable.
+                pass
+            target = paths.settings_path
+            if not target.exists() and paths.legacy_settings_path.exists():
+                target = paths.legacy_settings_path
+        else:
+            target = Path(path)
+        if not target.exists():
             return cls()
-        data = json.loads(path.read_text())
+        data = json.loads(target.read_text())
         valid = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         return cls(**valid)
 

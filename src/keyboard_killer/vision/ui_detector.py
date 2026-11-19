@@ -18,10 +18,11 @@ import cv2
 import numpy as np
 
 from keyboard_killer.config import DisplayLayout, MonitorInfo
+from keyboard_killer.config.paths import current_paths
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_ICON_CACHE_DIR = Path.home() / ".config" / "keyboard-killer" / "icon_cache"
+DEFAULT_ICON_CACHE_DIR = current_paths().icon_cache_dir
 
 try:
     from rapidocr_onnxruntime import RapidOCR

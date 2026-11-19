@@ -1,0 +1,41 @@
+"""Platform package: shared protocols and per-OS implementations."""
+
+from keyboard_killer.platform.base import (
+    AccessibilityBridge,
+    Autostart,
+    CameraControls,
+    CameraInfo,
+    CameraSource,
+    CapabilityInfo,
+    CapabilityStatus,
+    Notifier,
+    NotSupportedError,
+    PermissionInfo,
+    PermissionService,
+    PermissionState,
+    PlatformContext,
+    PointerBackend,
+    ScreenSource,
+    SingleInstance,
+    Tray,
+)
+
+__all__ = [
+    "AccessibilityBridge",
+    "Autostart",
+    "CameraControls",
+    "CameraInfo",
+    "CameraSource",
+    "CapabilityInfo",
+    "CapabilityStatus",
+    "Notifier",
+    "NotSupportedError",
+    "PermissionInfo",
+    "PermissionService",
+    "PermissionState",
+    "PlatformContext",
+    "PointerBackend",
+    "ScreenSource",
+    "SingleInstance",
+    "Tray",
+]
