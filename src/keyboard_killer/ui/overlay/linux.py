@@ -9,6 +9,7 @@ from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtWidgets import QLabel, QSystemTrayIcon, QWidget
 
 from keyboard_killer.ui.overlay.base import (
+    NullOverlay,
     Overlay,
     OverlayCapability,
     OverlayMode,
@@ -133,14 +134,6 @@ class X11Overlay(Overlay):
 
     def close(self) -> None:
         self.widget.close()
-
-
-class NullOverlay(Overlay):
-    def __init__(self, reason: str = "Overlay unavailable.") -> None:
-        self._capability = OverlayCapability(OverlayMode.NONE, False, reason, False)
-
-    def capability(self) -> OverlayCapability:
-        return self._capability
 
 
 def create_overlay(

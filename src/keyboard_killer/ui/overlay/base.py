@@ -54,3 +54,13 @@ class Overlay:
 
     def close(self) -> None:
         return None
+
+
+class NullOverlay(Overlay):
+    """Explicitly unavailable surface; use when no display session is supported."""
+
+    def __init__(self, reason: str = "Overlay unavailable.") -> None:
+        self._capability = OverlayCapability(OverlayMode.NONE, False, reason, False)
+
+    def capability(self) -> OverlayCapability:
+        return self._capability
