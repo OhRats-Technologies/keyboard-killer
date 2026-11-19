@@ -14,7 +14,8 @@ from typing import Any
 import numpy as np
 import sounddevice as sd
 
-from keyboard_killer.audio.stt_engine import _preload_cuda_libs
+from keyboard_killer.voice.stt.base import SttEngine
+from keyboard_killer.voice.stt.whisper import WhisperSTTEngine
 
 logger = logging.getLogger(__name__)
 
@@ -265,6 +266,7 @@ class ActiveVoiceListener:
         require_command_prefix: bool = True,
         audio_device: int | str | None = None,
         whisper_model: Any | None = None,
+        stt_engine: SttEngine | None = None,
     ) -> None:
         self.on_speech_onset = on_speech_onset
         self.is_user_attending = is_user_attending
@@ -273,42 +275,18 @@ class ActiveVoiceListener:
         self.sleeping = False
         self.device = "custom"
         self.compute_type = "custom"
+        self._legacy_model = whisper_model
+        self.stt_engine = stt_engine
 
         if whisper_model is not None:
+            # Test/compat seam: a raw faster-whisper-like object.
             self.whisper = whisper_model
         else:
-            _preload_cuda_libs()
-            from faster_whisper import WhisperModel
-
-            try:
-                self.whisper = WhisperModel(
-                    whisper_model_size,
-                    device="cuda",
-                    compute_type="float16",
-                )
-                self.device = "cuda"
-                self.compute_type = "float16"
-            except Exception as exc:
-                logger.warning("Whisper CUDA init failed (%s); falling back to CPU int8.", exc)
-                self.whisper = WhisperModel(
-                    whisper_model_size,
-                    device="cpu",
-                    compute_type="int8",
-                )
-                self.device = "cpu"
-                self.compute_type = "int8"
-
-            # Warm up kernels once at startup
-            list(
-                self.whisper.transcribe(
-                    np.zeros(SAMPLE_RATE, dtype=np.float32),
-                    language="en",
-                    beam_size=1,
-                    best_of=1,
-                    vad_filter=False,
-                    without_timestamps=True,
-                )[0]
-            )
+            if self.stt_engine is None:
+                self.stt_engine = WhisperSTTEngine(model_size=whisper_model_size)
+            self.device = getattr(self.stt_engine, "device", "custom")
+            self.compute_type = getattr(self.stt_engine, "compute_type", "custom")
+            self.whisper = self.stt_engine
 
         self.pop_detector = _SpeechVetoedPopDetector(enabled=enable_pop_click)
 
@@ -346,6 +324,8 @@ class ActiveVoiceListener:
         if self._worker_thread is not None and self._worker_thread.is_alive():
             self._worker_thread.join(timeout=1.5)
             self._worker_thread = None
+        if self._legacy_model is None and self.stt_engine is not None:
+            self.stt_engine.close()
 
     def _sd_callback(
         self,
@@ -459,28 +439,39 @@ class ActiveVoiceListener:
 
     def _transcribe_and_filter(self, audio_np: np.ndarray, onset_ts: float) -> None:
         """Transcribe utterance and apply anti-hallucination & grammar gates."""
-        segments, _info = self.whisper.transcribe(
-            audio_np,
-            language="en",
-            beam_size=1,
-            best_of=1,
-            temperature=0.0,
-            condition_on_previous_text=False,
-            vad_filter=False,
-            without_timestamps=True,
-        )
-
-        seg_list = list(segments)
-        if not seg_list:
-            return
+        text = ""
+        avg_no_speech = 0.0
+        avg_logprob = 0.0
+        if self._legacy_model is not None:
+            segments, _info = self._legacy_model.transcribe(
+                audio_np,
+                language="en",
+                beam_size=1,
+                best_of=1,
+                temperature=0.0,
+                condition_on_previous_text=False,
+                vad_filter=False,
+                without_timestamps=True,
+            )
+            seg_list = list(segments)
+            if not seg_list:
+                return
+            avg_no_speech = sum(s.no_speech_prob for s in seg_list) / len(seg_list)
+            avg_logprob = sum(s.avg_logprob for s in seg_list) / len(seg_list)
+            text = " ".join(s.text.strip() for s in seg_list).strip()
+        else:
+            assert self.stt_engine is not None
+            result = self.stt_engine.transcribe_detailed(audio_np)
+            text = result.text
+            avg_no_speech = result.no_speech_prob
+            avg_logprob = result.avg_logprob
+            if not text:
+                return
 
         # Gate 1: Reject high no_speech_prob or low logprob (coughs, mic rustle, mumbles)
-        avg_no_speech = sum(s.no_speech_prob for s in seg_list) / len(seg_list)
-        avg_logprob = sum(s.avg_logprob for s in seg_list) / len(seg_list)
         if avg_no_speech > 0.48 or avg_logprob < -0.85:
             return
 
-        text = " ".join(s.text.strip() for s in seg_list).strip()
         clean = text.lower().strip(" .,!?\"'")
         if not clean or clean in _WHISPER_HALLUCINATIONS or len(clean) < 3:
             return

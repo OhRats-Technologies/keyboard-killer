@@ -1,4 +1,4 @@
-"""Combined Phase 1 (Dual-Cam Stereo Gaze) + Phase 2 (Pop-Click & CUDA Voice Router) daemon."""
+"""Combined dual-camera gaze, pop-click, and voice-routing daemon."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from rich.console import Console
 
 from keyboard_killer.audio.active_listener import ActiveVoiceListener
 from keyboard_killer.audio.pop_detector import PopTriggerStateMachine
-from keyboard_killer.audio.stt_engine import UnifiedAudioService, WhisperSTTEngine
+from keyboard_killer.audio.stt_engine import UnifiedAudioService
 from keyboard_killer.config import AppConfig, get_display_layout
 from keyboard_killer.input.click_harvest import EvdevMouseClickHarvester
 from keyboard_killer.input.pointer import DryRunPointerBackend, PointerBackend
@@ -25,6 +25,7 @@ from keyboard_killer.ipc.state import FLAG_FACE_DETECTED, SharedGazeReader
 from keyboard_killer.router.dispatcher import VoiceCommandRouter
 from keyboard_killer.router.gaze_vlm_clicker import GazeVLMClicker
 from keyboard_killer.router.llm_agent import LLMAgent
+from keyboard_killer.voice.stt.factory import create_stt_engine
 from keyboard_killer.vision.calibrator import (
     StereoGazeModel,
     append_harvested_calibration_samples,
@@ -50,7 +51,7 @@ def run_combined_daemon(
     duration_sec: float | None = None,
     console: Console | None = None,
 ) -> None:
-    """Run vision gaze tracking, acoustic pop-click, and CUDA faster-whisper PTT in one process."""
+    """Run vision gaze tracking, acoustic pop-click, and voice STT in one process."""
     out = console or Console()
     if not enable_vision and not enable_audio:
         raise ValueError("At least one of vision or audio must be enabled.")
@@ -118,6 +119,7 @@ def run_combined_daemon(
     audio_svc: UnifiedAudioService | None = None
     ptt_mon: EvdevHotkeyMonitor | None = None
     active_listener: ActiveVoiceListener | None = None
+    stt = None
     event_stop = threading.Event()
     event_thread: threading.Thread | None = None
     vlm_clicker: GazeVLMClicker | None = None
@@ -229,8 +231,15 @@ def run_combined_daemon(
                         mon.x + mon.width * 0.5, mon.y + mon.height * 0.5, None
                     )
 
+            stt_selection = create_stt_engine(config)
+            stt = stt_selection.engine
+            if stt_selection.fell_back:
+                out.print(f"[yellow]STT fallback: {stt_selection.fallback_reason}[/yellow]")
+            out.print(
+                f"STT: {stt.status().name} ({stt.status().device}/{stt.status().compute_type})"
+            )
+
             if config.always_on_voice:
-                out.print(f"Loading faster-whisper '{config.whisper_model}' (always-on VAD)...")
                 active_listener = ActiveVoiceListener(
                     on_speech_onset=_prewarm_gaze_vlm,
                     is_user_attending=_is_user_attending if enable_vision else None,
@@ -238,6 +247,7 @@ def run_combined_daemon(
                     enable_pop_click=config.enable_pop_click,
                     require_command_prefix=(config.require_command_prefix and not dictate_unprefixed),
                     audio_device=config.audio_device,
+                    stt_engine=stt,
                 )
                 out.print(
                     f"[green]ActiveVoiceListener ready ({active_listener.device}/{active_listener.compute_type}) "
@@ -272,10 +282,9 @@ def run_combined_daemon(
                 )
                 event_thread.start()
             else:
-                out.print(f"Loading faster-whisper '{config.whisper_model}' (PTT)...")
-                stt = WhisperSTTEngine(model_size=config.whisper_model)
+                info = stt.status()
                 out.print(
-                    f"[green]STT ready ({stt.device}/{stt.compute_type}) | LLM={llm.backend}[/green]"
+                    f"[green]STT ready ({info.device}/{info.compute_type}) | LLM={llm.backend}[/green]"
                 )
 
                 pop = PopTriggerStateMachine(
@@ -366,6 +375,8 @@ def run_combined_daemon(
             event_thread.join(timeout=1.0)
         if active_listener is not None:
             active_listener.stop()
+        if stt is not None:
+            stt.close()
         if ptt_mon is not None:
             ptt_mon.stop()
         if audio_svc is not None:

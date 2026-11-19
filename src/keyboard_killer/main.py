@@ -285,6 +285,8 @@ def _apply_runtime_overrides(
     gain2: int | None = None,
     hotkey: str | None = None,
     whisper_model: str | None = None,
+    stt_engine: str | None = None,
+    stt_provider: str | None = None,
     llm_backend: str | None = None,
     vlm_model: str | None = None,
     no_vlm: bool = False,
@@ -314,6 +316,10 @@ def _apply_runtime_overrides(
         cfg.ptt_hotkey = hotkey
     if whisper_model is not None:
         cfg.whisper_model = whisper_model
+    if stt_engine is not None:
+        cfg.stt_engine = stt_engine
+    if stt_provider is not None:
+        cfg.stt_provider = stt_provider
     if llm_backend is not None:
         cfg.llm_backend = llm_backend
     if vlm_model is not None:
@@ -348,7 +354,9 @@ def run_all(
     exp2: int | None = typer.Option(None, help="Cam2 manual exposure"),
     gain2: int | None = typer.Option(None, help="Cam2 sensor gain"),
     hotkey: str | None = typer.Option(None, help="Evdev PTT hotkey (default KEY_RIGHTCTRL)"),
-    whisper_model: str | None = typer.Option(None, help="faster-whisper model (default base.en)"),
+    whisper_model: str | None = typer.Option(None, help="faster-whisper fallback model (default base.en)"),
+    stt_engine: str | None = typer.Option(None, help="STT engine: auto | parakeet | whisper"),
+    stt_provider: str | None = typer.Option(None, help="STT execution provider: cpu | cuda"),
     llm_backend: str | None = typer.Option(None, help="LLM backend: auto | ollama | gemini"),
     vlm_model: str | None = typer.Option(None, help="Ollama vision grounding model (default gemma4:e4b)"),
     no_vlm: bool = typer.Option(False, help="Disable gaze-foveated OCR/VLM voice clicking"),
@@ -390,6 +398,8 @@ def run_all(
         gain2=gain2,
         hotkey=hotkey,
         whisper_model=whisper_model,
+        stt_engine=stt_engine,
+        stt_provider=stt_provider,
         llm_backend=llm_backend,
         vlm_model=vlm_model,
         no_vlm=no_vlm,
@@ -464,13 +474,14 @@ def test_audio(
     seconds: float = typer.Option(5.0, help="Seconds to monitor live mic for pops & plosive rejection"),
     min_peak: float | None = typer.Option(None, help="Minimum high-pass peak threshold (default 0.25)"),
     min_rms: float | None = typer.Option(None, help="Minimum chunk RMS threshold (default 0.032)"),
-    transcribe: bool = typer.Option(False, help="Also test CUDA faster-whisper transcription on captured audio"),
+    transcribe: bool = typer.Option(False, help="Also test STT transcription on captured audio"),
 ) -> None:
-    """Test PipeWire mic stream, plosive-gated lip-pop detector, and optional Whisper CUDA STT."""
+    """Test the mic stream, plosive-gated lip-pop detector, and optional STT."""
     import numpy as np
 
     from keyboard_killer.audio.pop_detector import PopEvalResult, PopTriggerStateMachine
-    from keyboard_killer.audio.stt_engine import UnifiedAudioService, WhisperSTTEngine
+    from keyboard_killer.audio.stt_engine import UnifiedAudioService
+    from keyboard_killer.voice.stt.factory import create_stt_engine
 
     cfg = AppConfig.load()
     pop = PopTriggerStateMachine(
@@ -522,16 +533,27 @@ def test_audio(
         f"Max peak={max_stats['peak']:.3f}, Max rms={max_stats['rms']:.3f}, Floor={pop._noise_floor:.4f}"
     )
     if transcribe and recorded:
-        console.print(f"Loading faster-whisper ({cfg.whisper_model}) on CUDA...")
-        stt = WhisperSTTEngine(model_size=cfg.whisper_model)
+        selection = create_stt_engine(cfg)
+        stt = selection.engine
+        if selection.fell_back:
+            console.print(f"[yellow]STT fallback: {selection.fallback_reason}[/yellow]")
+        started = time.perf_counter()
         text = stt.transcribe(np.concatenate(recorded))
-        console.print(f"STT ({stt.device}/{stt.compute_type}): [cyan]{text!r}[/cyan]")
+        dt_ms = (time.perf_counter() - started) * 1000.0
+        info = stt.status()
+        console.print(
+            f"STT {info.name} ({info.device}/{info.compute_type}, {dt_ms:.0f}ms): "
+            f"[cyan]{text!r}[/cyan]"
+        )
+        stt.close()
 
 
 @app.command("run-voice")
 def run_voice(
     hotkey: str | None = typer.Option(None, help="Evdev PTT hotkey (default KEY_RIGHTCTRL)"),
-    whisper_model: str | None = typer.Option(None, help="faster-whisper model (default base.en)"),
+    whisper_model: str | None = typer.Option(None, help="faster-whisper fallback model (default base.en)"),
+    stt_engine: str | None = typer.Option(None, help="STT engine: auto | parakeet | whisper"),
+    stt_provider: str | None = typer.Option(None, help="STT execution provider: cpu | cuda"),
     llm_backend: str | None = typer.Option(None, help="LLM backend: auto | ollama | gemini"),
     pop_peak: float | None = typer.Option(None, help="Pop detector peak threshold (default 0.25)"),
     pop_rms: float | None = typer.Option(None, help="Pop detector RMS threshold (default 0.032)"),
@@ -544,6 +566,8 @@ def run_voice(
         AppConfig.load(),
         hotkey=hotkey,
         whisper_model=whisper_model,
+        stt_engine=stt_engine,
+        stt_provider=stt_provider,
         llm_backend=llm_backend,
         pop_peak=pop_peak,
         pop_rms=pop_rms,
@@ -558,6 +582,98 @@ def run_voice(
         duration_sec=seconds,
         console=console,
     )
+
+
+models_app = typer.Typer(
+    name="models",
+    help="Manage app-owned model assets (pinned, resumable, SHA-256 verified).",
+    no_args_is_help=True,
+)
+app.add_typer(models_app, name="models")
+
+
+def _model_asset(which: str):
+    from keyboard_killer.models.catalog import get_asset, stt_assets
+
+    if which in ("stt", "default"):
+        assets = stt_assets()
+        if not assets:
+            raise typer.BadParameter("No STT assets are in the catalog.")
+        return assets[0]
+    try:
+        return get_asset(which)
+    except KeyError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
+@models_app.command("status")
+def models_status() -> None:
+    """Show pinned assets, local state, and whether a receipt verifies."""
+    from keyboard_killer.models.catalog import ASSETS
+    from keyboard_killer.models.store import ModelStore
+
+    store = ModelStore()
+    table = Table(title="App-owned models")
+    table.add_column("Asset")
+    table.add_column("State")
+    table.add_column("Size")
+    table.add_column("Path")
+    for asset in ASSETS.values():
+        status = store.status(asset, verify_hashes=False)
+        table.add_row(
+            asset.display_name,
+            status.state.value,
+            f"{asset.total_bytes / (1024 * 1024):.1f} MB",
+            str(status.path),
+        )
+    console.print(table)
+
+
+@models_app.command("download")
+def models_download(
+    which: str = typer.Argument("stt", help="stt or a pinned asset id"),
+) -> None:
+    """Download and verify a pinned model with resume and progress."""
+    from keyboard_killer.models.downloader import download_asset
+
+    asset = _model_asset(which)
+    console.print(
+        f"Downloading [bold]{asset.display_name}[/bold] "
+        f"({asset.total_bytes / (1024 * 1024):.1f} MB, revision {asset.revision[:12]})..."
+    )
+    last_percent = {"value": -10.0}
+
+    def _progress(update) -> None:
+        if update.percent - last_percent["value"] >= 5.0 or update.percent >= 100.0:
+            last_percent["value"] = update.percent
+            console.print(
+                f"  {update.percent:5.1f}%  {update.file_name} "
+                f"({update.overall_done / (1024 * 1024):.1f}/"
+                f"{update.overall_total / (1024 * 1024):.1f} MB)"
+            )
+
+    try:
+        receipt = download_asset(asset, progress=_progress)
+    except Exception as exc:
+        console.print(f"[red]Download failed: {exc}[/red]")
+        console.print("Partial files are kept; run the command again to resume.")
+        raise typer.Exit(code=1) from exc
+    console.print(
+        f"[green]Verified and promoted {asset.id}[/green] "
+        f"({len(receipt.files)} files, receipt written)."
+    )
+
+
+@models_app.command("verify")
+def models_verify(which: str = typer.Argument("stt", help="stt or a pinned asset id")) -> None:
+    """Re-hash every file and check the receipt."""
+    from keyboard_killer.models.store import ModelStore
+
+    asset = _model_asset(which)
+    status = ModelStore().status(asset, verify_hashes=True)
+    console.print(f"{asset.id}: [bold]{status.state.value}[/bold] — {status.detail}")
+    if not status.ready:
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

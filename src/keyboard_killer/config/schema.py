@@ -52,8 +52,13 @@ class AppConfig:
     one_euro_beta: float = 0.008
     blink_threshold: float = 0.55
     use_gpu: bool = True
-    # Phase 2: Audio pop-click, CUDA faster-whisper, and LLM routing
+    # Phase 2: audio pop-click, speech-to-text, and LLM routing
     ptt_hotkey: str = "KEY_RIGHTCTRL"
+    # D10: Parakeet is preferred; faster-whisper is the automatic fallback.
+    stt_engine: str = "auto"
+    stt_model_id: str = "parakeet-tdt-0.6b-v2"
+    stt_quantization: str = "int8"
+    stt_provider: str = "cpu"
     whisper_model: str = "base.en"
     llm_backend: str = "auto"
     ollama_model: str = "qwen2.5-coder:7b"
