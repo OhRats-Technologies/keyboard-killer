@@ -676,6 +676,9 @@ class OnboardingWindow(QDialog):
 
     def _show(self, step: OnboardingStep) -> None:
         page = self.pages[step]
+        for candidate in self.pages.values():
+            if isinstance(candidate, CamerasPage) and candidate is not page:
+                candidate.close_previews()
         self.stack.setCurrentWidget(page)
         self.step_label.setText(f"Step {STEPS.index(step) + 1} of {len(STEPS)} — {step.value.capitalize()}")
         self.back_button.setEnabled(step is not OnboardingStep.WELCOME)
@@ -690,6 +693,7 @@ class OnboardingWindow(QDialog):
             page.problem.setText(reason)
             return
         page.problem.setText("")
+        self.config.save(self.paths.settings_path)
         if self.flow.step is OnboardingStep.READY:
             self.flow.advance()
             self.accept()
