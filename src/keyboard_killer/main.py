@@ -288,7 +288,13 @@ def _apply_runtime_overrides(
     stt_engine: str | None = None,
     stt_provider: str | None = None,
     llm_backend: str | None = None,
+    llm_provider: str | None = None,
+    llm_preset: str | None = None,
+    llm_model: str | None = None,
+    acp_agent: str | None = None,
     vlm_model: str | None = None,
+    vlm_provider: str | None = None,
+    vlm_remote_consent: bool | None = None,
     no_vlm: bool = False,
     ptt: bool = False,
     pop_click: bool | None = None,
@@ -322,8 +328,20 @@ def _apply_runtime_overrides(
         cfg.stt_provider = stt_provider
     if llm_backend is not None:
         cfg.llm_backend = llm_backend
+    if llm_provider is not None:
+        cfg.llm_provider = llm_provider
+    if llm_preset is not None:
+        cfg.llm_preset = llm_preset
+    if llm_model is not None:
+        cfg.llm_model = llm_model
+    if acp_agent is not None:
+        cfg.acp_agent_id = acp_agent
     if vlm_model is not None:
         cfg.gaze_vlm_model = vlm_model
+    if vlm_provider is not None:
+        cfg.gaze_vlm_provider = vlm_provider
+    if vlm_remote_consent is not None:
+        cfg.gaze_vlm_remote_consent = vlm_remote_consent
     if no_vlm:
         cfg.gaze_vlm_enabled = False
     if ptt:
@@ -357,8 +375,16 @@ def run_all(
     whisper_model: str | None = typer.Option(None, help="faster-whisper fallback model (default base.en)"),
     stt_engine: str | None = typer.Option(None, help="STT engine: auto | parakeet | whisper"),
     stt_provider: str | None = typer.Option(None, help="STT execution provider: cpu | cuda"),
-    llm_backend: str | None = typer.Option(None, help="LLM backend: auto | ollama | gemini"),
-    vlm_model: str | None = typer.Option(None, help="Ollama vision grounding model (default gemma4:e4b)"),
+    llm_backend: str | None = typer.Option(None, help="LLM backend: auto | ollama | gemini | acp"),
+    llm_provider: str | None = typer.Option(None, help="Provider: auto | ollama | gemini | openai_compat | acp"),
+    llm_preset: str | None = typer.Option(None, help="OpenAI-compatible preset (openai, openrouter, groq, ...)"),
+    llm_model: str | None = typer.Option(None, help="Text model name for the selected provider"),
+    acp_agent: str | None = typer.Option(None, help="ACP agent id (default opencode)"),
+    vlm_model: str | None = typer.Option(None, help="Vision grounding model (default gemma4:e4b)"),
+    vlm_provider: str | None = typer.Option(None, help="Gaze VLM provider: auto | ollama | openai_compat"),
+    vlm_remote_consent: bool = typer.Option(
+        False, help="Allow screenshots to leave this device for the gaze VLM"
+    ),
     no_vlm: bool = typer.Option(False, help="Disable gaze-foveated OCR/VLM voice clicking"),
     ptt: bool = typer.Option(False, help="Use Push-to-Talk hotkey instead of always-on VAD"),
     pop_click: bool | None = typer.Option(
@@ -401,7 +427,13 @@ def run_all(
         stt_engine=stt_engine,
         stt_provider=stt_provider,
         llm_backend=llm_backend,
+        llm_provider=llm_provider,
+        llm_preset=llm_preset,
+        llm_model=llm_model,
+        acp_agent=acp_agent,
         vlm_model=vlm_model,
+        vlm_provider=vlm_provider,
+        vlm_remote_consent=vlm_remote_consent,
         no_vlm=no_vlm,
         ptt=ptt,
         pop_click=pop_click,
@@ -554,7 +586,11 @@ def run_voice(
     whisper_model: str | None = typer.Option(None, help="faster-whisper fallback model (default base.en)"),
     stt_engine: str | None = typer.Option(None, help="STT engine: auto | parakeet | whisper"),
     stt_provider: str | None = typer.Option(None, help="STT execution provider: cpu | cuda"),
-    llm_backend: str | None = typer.Option(None, help="LLM backend: auto | ollama | gemini"),
+    llm_backend: str | None = typer.Option(None, help="LLM backend: auto | ollama | gemini | acp"),
+    llm_provider: str | None = typer.Option(None, help="Provider: auto | ollama | gemini | openai_compat | acp"),
+    llm_preset: str | None = typer.Option(None, help="OpenAI-compatible preset (openai, openrouter, groq, ...)"),
+    llm_model: str | None = typer.Option(None, help="Text model name for the selected provider"),
+    acp_agent: str | None = typer.Option(None, help="ACP agent id (default opencode)"),
     pop_peak: float | None = typer.Option(None, help="Pop detector peak threshold (default 0.25)"),
     pop_rms: float | None = typer.Option(None, help="Pop detector RMS threshold (default 0.032)"),
     dictate_unprefixed: bool = typer.Option(False, help="Type unprefixed speech directly"),
@@ -569,6 +605,10 @@ def run_voice(
         stt_engine=stt_engine,
         stt_provider=stt_provider,
         llm_backend=llm_backend,
+        llm_provider=llm_provider,
+        llm_preset=llm_preset,
+        llm_model=llm_model,
+        acp_agent=acp_agent,
         pop_peak=pop_peak,
         pop_rms=pop_rms,
     )
@@ -582,6 +622,104 @@ def run_voice(
         duration_sec=seconds,
         console=console,
     )
+
+
+providers_app = typer.Typer(
+    name="providers",
+    help="Bring-your-own AI providers: OpenAI-compatible, Ollama, and ACP agents.",
+    no_args_is_help=True,
+)
+app.add_typer(providers_app, name="providers")
+
+
+@providers_app.command("presets")
+def providers_presets() -> None:
+    """List OpenAI-compatible endpoints and their key variables."""
+    from keyboard_killer.models.providers.presets import load_presets
+
+    table = Table(title="OpenAI-compatible presets")
+    table.add_column("Id")
+    table.add_column("Name")
+    table.add_column("Base URL")
+    table.add_column("Key")
+    table.add_column("Local")
+    for preset in load_presets():
+        table.add_row(
+            preset.id,
+            preset.name,
+            preset.base_url,
+            preset.api_key_env or "none",
+            "yes" if preset.local else "no",
+        )
+    console.print(table)
+
+
+@providers_app.command("acp")
+def providers_acp() -> None:
+    """List ACP agents from the registry (or the offline fallback list)."""
+    from keyboard_killer.models.providers.acp_registry import fetch_registry
+
+    specs = fetch_registry()
+    table = Table(title="ACP agents")
+    table.add_column("Id")
+    table.add_column("Name")
+    table.add_column("Command")
+    table.add_column("Source")
+    table.add_column("Installed")
+    for spec in specs:
+        table.add_row(
+            spec.id,
+            spec.name,
+            " ".join(spec.command) or "(no launch command)",
+            spec.source,
+            "yes" if spec.installed else "no",
+        )
+    console.print(table)
+
+
+@providers_app.command("status")
+def providers_status() -> None:
+    """Show the configured text and gaze-VLM provider status."""
+    from keyboard_killer.models.providers.roles import resolve_gaze_vlm_role, resolve_text_role
+
+    cfg = AppConfig.load()
+    for label, resolution in (
+        ("text", resolve_text_role(cfg)),
+        ("gaze VLM", resolve_gaze_vlm_role(cfg)),
+    ):
+        status = resolution.provider.status()
+        console.print(
+            f"[bold]{label}[/bold]: {resolution.provider.display_name} "
+            f"({resolution.provider.model or 'model not set'}) -> [bold]{status.state.value}[/bold]"
+        )
+        if status.detail:
+            console.print(f"  {status.detail}")
+        for reason in resolution.reasons:
+            console.print(f"  [yellow]{reason}[/yellow]")
+
+
+@providers_app.command("set-key")
+def providers_set_key(
+    provider_id: str = typer.Argument(..., help="Preset id, e.g. openai or gemini"),
+) -> None:
+    """Store an API key in the OS keychain (never in settings.json)."""
+    from keyboard_killer.models.providers.secrets import keyring_available, set_secret
+
+    if not keyring_available():
+        console.print("[red]The OS keychain is unavailable. Install the keyring backend.[/red]")
+        raise typer.Exit(code=1)
+    key = typer.prompt("API key", hide_input=True)
+    set_secret(provider_id, key.strip())
+    console.print(f"[green]Stored {provider_id} key in the OS keychain.[/green]")
+
+
+@providers_app.command("delete-key")
+def providers_delete_key(provider_id: str = typer.Argument(...)) -> None:
+    """Remove an API key from the OS keychain."""
+    from keyboard_killer.models.providers.secrets import delete_secret
+
+    delete_secret(provider_id)
+    console.print(f"Removed {provider_id} from the OS keychain (if present).")
 
 
 models_app = typer.Typer(

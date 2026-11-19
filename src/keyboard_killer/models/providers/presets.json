@@ -1,0 +1,101 @@
+[
+  {
+    "id": "openai",
+    "name": "OpenAI",
+    "base_url": "https://api.openai.com/v1",
+    "api_key_env": "OPENAI_API_KEY",
+    "default_model": "gpt-4o-mini",
+    "docs": "https://platform.openai.com/api-keys",
+    "local": false,
+    "latency_class": "fast",
+    "image_input": true
+  },
+  {
+    "id": "openrouter",
+    "name": "OpenRouter",
+    "base_url": "https://openrouter.ai/api/v1",
+    "api_key_env": "OPENROUTER_API_KEY",
+    "default_model": "openai/gpt-4o-mini",
+    "docs": "https://openrouter.ai/keys",
+    "local": false,
+    "latency_class": "fast",
+    "image_input": true
+  },
+  {
+    "id": "groq",
+    "name": "Groq",
+    "base_url": "https://api.groq.com/openai/v1",
+    "api_key_env": "GROQ_API_KEY",
+    "default_model": "llama-3.3-70b-versatile",
+    "docs": "https://console.groq.com/keys",
+    "local": false,
+    "latency_class": "fast",
+    "image_input": false
+  },
+  {
+    "id": "together",
+    "name": "Together",
+    "base_url": "https://api.together.xyz/v1",
+    "api_key_env": "TOGETHER_API_KEY",
+    "default_model": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+    "docs": "https://api.together.ai/settings/api-keys",
+    "local": false,
+    "latency_class": "fast",
+    "image_input": true
+  },
+  {
+    "id": "gemini",
+    "name": "Gemini (OpenAI-compatible)",
+    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "api_key_env": "GEMINI_API_KEY",
+    "default_model": "gemini-2.5-flash",
+    "docs": "https://aistudio.google.com/apikey",
+    "local": false,
+    "latency_class": "fast",
+    "image_input": true
+  },
+  {
+    "id": "lmstudio",
+    "name": "LM Studio (local)",
+    "base_url": "http://127.0.0.1:1234/v1",
+    "api_key_env": "",
+    "default_model": "",
+    "docs": "https://lmstudio.ai",
+    "local": true,
+    "latency_class": "fast",
+    "image_input": true
+  },
+  {
+    "id": "llama_cpp",
+    "name": "llama.cpp server (local)",
+    "base_url": "http://127.0.0.1:8080/v1",
+    "api_key_env": "",
+    "default_model": "",
+    "docs": "https://github.com/ggml-org/llama.cpp",
+    "local": true,
+    "latency_class": "fast",
+    "image_input": false
+  },
+  {
+    "id": "vllm",
+    "name": "vLLM (local)",
+    "base_url": "http://127.0.0.1:8000/v1",
+    "api_key_env": "",
+    "default_model": "",
+    "docs": "https://docs.vllm.ai",
+    "local": true,
+    "latency_class": "fast",
+    "image_input": true
+  },
+  {
+    "id": "ollama_openai",
+    "name": "Ollama /v1 (local)",
+    "base_url": "http://127.0.0.1:11434/v1",
+    "api_key_env": "",
+    "default_model": "",
+    "docs": "https://ollama.com",
+    "local": true,
+    "latency_class": "fast",
+    "image_input": true
+  }
+]

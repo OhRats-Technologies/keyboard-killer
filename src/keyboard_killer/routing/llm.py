@@ -1,4 +1,4 @@
-"""Local Ollama & Gemini API structured client for Terminal and Browser voice commands."""
+"""Provider-backed LLM client for Terminal and Browser voice commands."""
 
 from __future__ import annotations
 
@@ -7,7 +7,12 @@ import os
 import re
 from typing import Any
 
-import httpx
+from keyboard_killer.models.providers.acp import AcpProvider
+from keyboard_killer.models.providers.acp_registry import fetch_registry
+from keyboard_killer.models.providers.base import Provider, ProviderError
+from keyboard_killer.models.providers.ollama import OllamaProvider
+from keyboard_killer.models.providers.openai_compat import OpenAICompatProvider
+from keyboard_killer.models.providers.secrets import resolve_api_key
 
 
 def _strip_code_fences(text: str) -> str:
@@ -18,8 +23,47 @@ def _strip_code_fences(text: str) -> str:
     return cleaned.strip("`").strip()
 
 
+def _acp_provider(agent_id: str, *, timeout: float = 180.0) -> AcpProvider:
+    registry = fetch_registry()
+    spec = next((item for item in registry if item.id == agent_id), None)
+    if spec is None:
+        raise ProviderError(f"ACP agent {agent_id!r} is not in the registry.")
+    return AcpProvider(spec, timeout=timeout)
+
+
+def build_text_provider(
+    backend: str = "auto",
+    *,
+    ollama_url: str = "http://127.0.0.1:11434",
+    ollama_model: str = "qwen2.5-coder:7b",
+    gemini_model: str = "gemini-2.5-flash",
+    gemini_api_key: str | None = None,
+    preset: str = "openai",
+    model: str = "",
+    acp_agent_id: str = "opencode",
+    timeout_sec: float = 20.0,
+) -> tuple[str, Provider]:
+    """Resolve the legacy backend names to provider adapters."""
+    if backend == "auto":
+        backend = "gemini" if os.environ.get("GEMINI_API_KEY") else "ollama"
+    if backend == "ollama":
+        return "ollama", OllamaProvider(ollama_model, base_url=ollama_url)
+    if backend in ("gemini", "openai_compat", "openai"):
+        preset_id = "gemini" if backend == "gemini" else preset
+        chosen_model = gemini_model if backend == "gemini" else model
+        provider = OpenAICompatProvider(
+            preset_id,
+            chosen_model,
+            api_key=gemini_api_key if backend == "gemini" else None,
+        )
+        return backend, provider
+    if backend == "acp":
+        return "acp", _acp_provider(acp_agent_id, timeout=max(120.0, timeout_sec))
+    raise ValueError(f"Unsupported LLM backend: {backend!r}")
+
+
 class LLMAgent:
-    """Unified async/sync client for Ollama (local) or Gemini API (cloud)."""
+    """Unified synchronous client over any configured provider."""
 
     def __init__(
         self,
@@ -29,63 +73,35 @@ class LLMAgent:
         gemini_model: str = "gemini-2.5-flash",
         gemini_api_key: str | None = None,
         timeout_sec: float = 20.0,
+        *,
+        preset: str = "openai",
+        model: str = "",
+        acp_agent_id: str = "opencode",
+        provider: Provider | None = None,
     ) -> None:
         self.ollama_url = ollama_url.rstrip("/")
         self.ollama_model = ollama_model
         self.gemini_model = gemini_model
-        self.gemini_api_key = gemini_api_key or os.environ.get("GEMINI_API_KEY", "")
         self.timeout_sec = float(timeout_sec)
-
-        if backend == "auto":
-            self.backend = "gemini" if self.gemini_api_key else "ollama"
-        elif backend in ("ollama", "gemini"):
-            self.backend = backend
+        if provider is not None:
+            self.provider = provider
+            self.backend = backend if backend != "auto" else provider.id
         else:
-            raise ValueError(f"Unsupported LLM backend: {backend!r}")
+            self.backend, self.provider = build_text_provider(
+                backend,
+                ollama_url=ollama_url,
+                ollama_model=ollama_model,
+                gemini_model=gemini_model,
+                gemini_api_key=gemini_api_key,
+                preset=preset,
+                model=model,
+                acp_agent_id=acp_agent_id,
+                timeout_sec=timeout_sec,
+            )
 
     def complete(self, system_prompt: str, user_prompt: str, json_mode: bool = False) -> str:
-        """Execute a synchronous chat completion against the configured backend."""
-        if self.backend == "gemini":
-            return self._complete_gemini(system_prompt, user_prompt, json_mode=json_mode)
-        return self._complete_ollama(system_prompt, user_prompt, json_mode=json_mode)
-
-    def _complete_ollama(self, system_prompt: str, user_prompt: str, json_mode: bool) -> str:
-        payload: dict[str, Any] = {
-            "model": self.ollama_model,
-            "stream": False,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-        }
-        if json_mode:
-            payload["format"] = "json"
-        with httpx.Client(timeout=self.timeout_sec) as client:
-            resp = client.post(f"{self.ollama_url}/api/chat", json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-        return str(data["message"]["content"]).strip()
-
-    def _complete_gemini(self, system_prompt: str, user_prompt: str, json_mode: bool) -> str:
-        if not self.gemini_api_key:
-            raise RuntimeError("GEMINI_API_KEY is not set.")
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{self.gemini_model}:generateContent"
-        )
-        gen_cfg: dict[str, Any] = {"temperature": 0.1}
-        if json_mode:
-            gen_cfg["responseMimeType"] = "application/json"
-        payload = {
-            "system_instruction": {"parts": [{"text": system_prompt}]},
-            "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-            "generationConfig": gen_cfg,
-        }
-        with httpx.Client(timeout=self.timeout_sec) as client:
-            resp = client.post(url, params={"key": self.gemini_api_key}, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-        return str(data["candidates"][0]["content"]["parts"][0]["text"]).strip()
+        """Execute a synchronous completion against the configured provider."""
+        return self.provider.complete(system_prompt, user_prompt, json=json_mode)
 
     def generate_shell_command(
         self,
@@ -132,3 +148,12 @@ class LLMAgent:
         )
         raw = _strip_code_fences(self.complete(system, user, json_mode=True))
         return dict(json.loads(raw))
+
+    @property
+    def api_key_configured(self) -> bool:
+        if isinstance(self.provider, OpenAICompatProvider):
+            return bool(resolve_api_key(self.provider.id, self.provider.preset.api_key_env))
+        return False
+
+    def close(self) -> None:
+        self.provider.close()

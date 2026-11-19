@@ -61,6 +61,10 @@ class AppConfig:
     stt_provider: str = "cpu"
     whisper_model: str = "base.en"
     llm_backend: str = "auto"
+    llm_provider: str = "auto"
+    llm_preset: str = "openai"
+    llm_model: str = ""
+    acp_agent_id: str = "opencode"
     ollama_model: str = "qwen2.5-coder:7b"
     gemini_model: str = "gemini-2.5-flash"
     pop_min_peak: float = 0.25
@@ -69,7 +73,10 @@ class AppConfig:
     # Phase 3: Gaze-Foveated Voice + Vision Grounding & Always-On VAD
     gaze_cursor_control: bool = False
     gaze_vlm_enabled: bool = True
+    gaze_vlm_provider: str = "auto"
+    gaze_vlm_preset: str = "openai"
     gaze_vlm_model: str = "gemma4:e4b"
+    gaze_vlm_remote_consent: bool = False
     gaze_crop_w: int = 680
     gaze_crop_h: int = 480
     gaze_keyword_threshold: float = 82.0

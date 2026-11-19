@@ -19,6 +19,7 @@ from rapidfuzz import fuzz
 from keyboard_killer.config import DisplayLayout
 from keyboard_killer.ipc.firefox_bridge import DOMCandidate, FirefoxDOMBridge
 from keyboard_killer.platform.linux.accessibility import LinuxDesktopAccessibilityBridge
+from keyboard_killer.models.providers.base import Provider
 from keyboard_killer.platform.linux.screen import monitor_at_point
 from keyboard_killer.vision.ui_detector import (
     GazeROISnapshot,
@@ -161,6 +162,7 @@ class GazeVLMClicker:
         crop_h: int = 480,
         keyword_threshold: float = 82.0,
         ollama_client: Any | None = None,
+        vlm_provider: Provider | None = None,
         on_harvest: Callable[[np.ndarray, tuple[float, float]], None] | None = None,
         firefox_bridge: FirefoxDOMBridge | None = None,
         desktop_atspi: LinuxDesktopAccessibilityBridge | None = None,
@@ -174,6 +176,7 @@ class GazeVLMClicker:
         self.crop_h = int(crop_h)
         self.keyword_threshold = float(keyword_threshold)
         self._ollama = ollama_client if ollama_client is not None else ollama
+        self._vlm_provider = vlm_provider
         self._on_harvest = on_harvest
         self.firefox_bridge = firefox_bridge
         self.desktop_atspi = desktop_atspi
@@ -190,16 +193,19 @@ class GazeVLMClicker:
     def warm_model_in_vram(self) -> bool:
         """Lock gemma4:e4b in GPU VRAM on startup with keep_alive=-1."""
         try:
-            self._ollama.chat(
-                model=self.model_name,
-                messages=[{"role": "user", "content": "ready"}],
-                keep_alive=-1,
-                think=False,
-                options={"num_predict": 1},
-            )
+            if self._vlm_provider is not None:
+                self._vlm_provider.warm()
+            else:
+                self._ollama.chat(
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": "ready"}],
+                    keep_alive=-1,
+                    think=False,
+                    options={"num_predict": 1},
+                )
             return True
         except Exception as exc:
-            logger.warning("Failed to warm VLM '%s' in Ollama: %s", self.model_name, exc)
+            logger.warning("Failed to warm VLM '%s': %s", self.model_name, exc)
             return False
 
     def _monitor_rect(self, gaze_x: float, gaze_y: float) -> tuple[int, int, int, int]:
@@ -373,30 +379,37 @@ class GazeVLMClicker:
         )
 
         try:
-            resp = self._ollama.chat(
-                model=self.model_name,
-                messages=[
-                    {"role": "system", "content": sys_prompt},
-                    {
-                        "role": "user",
-                        "images": [snapshot.som_png_bytes],
-                        "content": user_prompt,
+            if self._vlm_provider is not None:
+                raw_content = self._vlm_provider.complete(
+                    sys_prompt,
+                    user_prompt,
+                    json=True,
+                    images=[snapshot.som_png_bytes],
+                ).strip()
+            else:
+                resp = self._ollama.chat(
+                    model=self.model_name,
+                    messages=[
+                        {"role": "system", "content": sys_prompt},
+                        {
+                            "role": "user",
+                            "images": [snapshot.som_png_bytes],
+                            "content": user_prompt,
+                        },
+                    ],
+                    format=GroundingSelection.model_json_schema(),
+                    keep_alive=-1,
+                    think=False,
+                    options={
+                        "temperature": 0.0,
+                        "num_ctx": 4096,
+                        "num_predict": 48,
                     },
-                ],
-                format=GroundingSelection.model_json_schema(),
-                keep_alive=-1,
-                think=False,
-                options={
-                    "temperature": 0.0,
-                    "num_ctx": 4096,
-                    "num_predict": 48,
-                },
-            )
+                )
+                raw_content = (resp.message.content or "").strip()
         except Exception as exc:
-            logger.warning("Ollama grounding call failed (%s): %s", self.model_name, exc)
+            logger.warning("VLM grounding call failed (%s): %s", self.model_name, exc)
             return None
-
-        raw_content = (resp.message.content or "").strip()
         if not raw_content:
             return None
         selection = GroundingSelection.model_validate_json(raw_content)

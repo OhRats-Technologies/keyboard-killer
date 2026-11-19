@@ -24,6 +24,7 @@ from keyboard_killer.ipc.firefox_bridge import FirefoxDOMBridge
 from keyboard_killer.ipc.state import FLAG_FACE_DETECTED, SharedGazeReader
 from keyboard_killer.router.dispatcher import VoiceCommandRouter
 from keyboard_killer.router.gaze_vlm_clicker import GazeVLMClicker
+from keyboard_killer.models.providers.roles import resolve_gaze_vlm_role, resolve_text_role
 from keyboard_killer.routing.llm import LLMAgent
 from keyboard_killer.voice.stt.factory import create_stt_engine
 from keyboard_killer.vision.calibrator import (
@@ -123,6 +124,7 @@ def run_combined_daemon(
     event_stop = threading.Event()
     event_thread: threading.Thread | None = None
     vlm_clicker: GazeVLMClicker | None = None
+    vlm_provider = None
     mouse_harvester: EvdevMouseClickHarvester | None = None
 
     def _current_gaze_xy_fallback() -> tuple[float, float]:
@@ -156,39 +158,55 @@ def run_combined_daemon(
                 except FileNotFoundError:
                     out.print("[dim]Vision loop not active; gaze coordinates unavailable.[/dim]")
 
+            vlm_provider = None
             if config.gaze_vlm_enabled:
-                detector = GazeUIDetector()
-                desktop_atspi = LinuxDesktopAccessibilityBridge()
+                vlm_role = resolve_gaze_vlm_role(config)
+                if vlm_role.reasons:
+                    out.print(
+                        "[yellow]Gaze VLM disabled: "
+                        + " ".join(vlm_role.reasons)
+                        + " Tier-0 DOM, Tier-1 OCR, and AT-SPI still active.[/yellow]"
+                    )
+                else:
+                    vlm_provider = vlm_role.provider
+                    detector = GazeUIDetector()
+                    desktop_atspi = LinuxDesktopAccessibilityBridge()
+                    vlm_clicker = GazeVLMClicker(
+                        detector=detector,
+                        model_name=config.gaze_vlm_model,
+                        layout=layout,
+                        crop_w=config.gaze_crop_w,
+                        crop_h=config.gaze_crop_h,
+                        keyword_threshold=config.gaze_keyword_threshold,
+                        firefox_bridge=firefox_bridge,
+                        desktop_atspi=desktop_atspi,
+                        vlm_provider=vlm_provider,
+                    )
 
-                vlm_clicker = GazeVLMClicker(
-                    detector=detector,
-                    model_name=config.gaze_vlm_model,
-                    layout=layout,
-                    crop_w=config.gaze_crop_w,
-                    crop_h=config.gaze_crop_h,
-                    keyword_threshold=config.gaze_keyword_threshold,
-                    firefox_bridge=firefox_bridge,
-                    desktop_atspi=desktop_atspi,
+                    def _warm_vlm() -> None:
+                        assert vlm_clicker is not None
+                        if not vlm_clicker.warm_model_in_vram():
+                            out.print(
+                                f"[yellow]Warning: VLM '{config.gaze_vlm_model}' warmup failed. "
+                                "Tier-0 DOM & Tier-1 OCR still active.[/yellow]"
+                            )
+
+                    threading.Thread(
+                        target=_warm_vlm,
+                        name="vlm-warmup",
+                        daemon=True,
+                    ).start()
+
+            text_role = resolve_text_role(config)
+            if text_role.reasons:
+                out.print(
+                    "[yellow]Text LLM unavailable: "
+                    + " ".join(text_role.reasons)
+                    + " Deterministic commands still run.[/yellow]"
                 )
-                def _warm_vlm() -> None:
-                    assert vlm_clicker is not None
-                    if not vlm_clicker.warm_model_in_vram():
-                        out.print(
-                            f"[yellow]Warning: Ollama '{config.gaze_vlm_model}' warmup failed "
-                            "(check `ollama.service` / OLLAMA_FLASH_ATTENTION=0). "
-                            "Tier-0 DOM & Tier-1 OCR still active.[/yellow]"
-                        )
-
-                threading.Thread(
-                    target=_warm_vlm,
-                    name="vlm-warmup",
-                    daemon=True,
-                ).start()
-
             llm = LLMAgent(
-                backend=config.llm_backend,
-                ollama_model=config.ollama_model,
-                gemini_model=config.gemini_model,
+                backend="auto",
+                provider=text_role.provider,
             )
             def _on_recenter_gaze() -> str:
                 if model is None:
@@ -381,6 +399,8 @@ def run_combined_daemon(
             ptt_mon.stop()
         if audio_svc is not None:
             audio_svc.stop()
+        if vlm_provider is not None:
+            vlm_provider.close()
         if vlm_clicker is not None:
             if config.harvest_calib and calib_path is not None:
                 harvested = vlm_clicker.pop_harvested_samples()
