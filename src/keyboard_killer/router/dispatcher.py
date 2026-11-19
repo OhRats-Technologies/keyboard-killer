@@ -400,21 +400,73 @@ class VoiceCommandRouter:
             self.pointer.key_combo(ecodes.KEY_LEFTALT, ecodes.KEY_F4)
             return DispatchResult("deterministic", raw, "close_window")
 
+        # 0.6. Explicit next/previous window cycling: strip leading fillers ("a", "the", "and",
+        # "uh", "go to", "switch to", "move to") AND catch common Whisper beam=1 near-homophones
+        # ("text window", "net window", "nest window", "ex window") so they NEVER open OS search!
+        stripped_win = re.sub(
+            r"^(?:(?:uh|um|and|a|an|the|to|go\s+to|switch\s+to|move\s+to)\s+)+",
+            "",
+            norm,
+        )
+        if stripped_win in (
+            "next window",
+            "other window",
+            "another window",
+            "text window",
+            "net window",
+            "nest window",
+            "neck window",
+            "necks window",
+            "ex window",
+        ):
+            self._cycle_next_window()
+            return DispatchResult("deterministic", raw, "os_window_next")
+
+        if stripped_win in (
+            "previous window",
+            "prev window",
+            "last window",
+        ):
+            self._cycle_prev_window()
+            return DispatchResult("deterministic", raw, "os_window_prev")
+
         # 1. Explicit OS app/window focus: "switch window to X", "focus X", "open app X", or "antigravity window"
+        _forbidden_app_tokens = {
+            "close",
+            "open",
+            "new",
+            "show",
+            "this",
+            "that",
+            "next",
+            "previous",
+            "prev",
+            "last",
+            "other",
+            "another",
+            "cycle",
+            "switch",
+            "sync",
+            "align",
+            "minimize",
+            "maximize",
+        }
         m_os = re.match(
             r"^(?:switch\s+(?:window|app)\s+(?:to\s+)?|focus\s+(?:window\s+|app\s+|on\s+)?|open\s+app\s+)(.+)$",
             norm,
         )
         if m_os:
             target = re.sub(r"\s+(?:window|app)$", "", m_os.group(1).strip()).strip()
-            if target:
+            target_tokens = set(target.split())
+            if target and not (target_tokens & _forbidden_app_tokens):
                 self._focus_os_app_via_overview(target)
                 return DispatchResult("os_window_switch", raw, f"OS switch/focus: {target}")
 
         m_app_suffix = re.match(r"^(?:the\s+)?(.+?)\s+(?:window|app)$", norm)
         if m_app_suffix and norm not in self._deterministic_map:
             target = m_app_suffix.group(1).strip()
-            if target and target not in ("close", "open", "new", "show", "this", "that"):
+            target_tokens = set(target.split())
+            if target and not (target_tokens & _forbidden_app_tokens) and len(target.split()) <= 2:
                 self._focus_os_app_via_overview(target)
                 return DispatchResult("os_window_switch", raw, f"OS switch/focus: {target}")
 
