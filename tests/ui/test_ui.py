@@ -196,7 +196,7 @@ def test_main_window_navigation_and_theme(qapp, tmp_path: Path) -> None:
         enable_previews=False,
     )
     try:
-        assert window.stack.count() == 8
+        assert window.stack.count() == 9
         window.show_page("History")
         assert window.stack.currentWidget() is window.pages["History"]
         window.set_theme(ThemeName.DARK)
@@ -246,9 +246,34 @@ def test_onboarding_welcome_light_and_dark_goldens(qapp, tmp_path: Path) -> None
             enable_previews=False,
         )
         try:
-            window.resize(985, 640)
+            window.resize(1060, 640)
             window.show()
             qapp.processEvents()
             _compare_golden(window.grab(), f"onboarding-{theme.value}.png")
         finally:
             window.close()
+
+
+def test_camera_page_supports_one_or_two_cameras(qapp, tmp_path: Path, monkeypatch) -> None:
+    from keyboard_killer.ui.onboarding.steps import CamerasPage
+
+    paths = _paths(tmp_path)
+    monkeypatch.setattr(
+        "keyboard_killer.ui.onboarding.steps.discover_v4l_by_id",
+        lambda: ["/dev/v4l/by-id/cam-a", "/dev/v4l/by-id/cam-b"],
+    )
+    config = AppConfig(cam1_by_id="/dev/v4l/by-id/cam-a", cam2_by_id="/dev/v4l/by-id/cam-b")
+    page = CamerasPage(config, paths, enable_previews=False)
+    try:
+        assert page.mode.currentData() == "auto"
+        page.mode.setCurrentIndex(page.mode.findData("mono"))
+        assert config.camera_mode == "mono"
+        assert page.cam2.isEnabled() is False
+        assert page.validate() == (True, "")
+
+        page.mode.setCurrentIndex(page.mode.findData("stereo"))
+        assert config.camera_mode == "stereo"
+        assert page.cam2.isEnabled() is True
+        assert page.validate() == (True, "")
+    finally:
+        page.close_previews()

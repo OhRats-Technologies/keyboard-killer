@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.2] - 2026-11-20
+
+- Control-room shell: grouped numbered rail, top status bar, large state
+  headline, last heard/clicked columns, and a live instrument column.
+- First launch opens the resumable setup story instead of a cold dashboard.
+- Setup supports one camera (mono) or two (stereo) as equal, intentional paths;
+  calibration, capture, doctor, and settings carry the chosen mode.
+- Onboarding progress rail, grouped settings, readable diagnostics summary, and
+  card-based camera/calibration/model surfaces.
+- Calibration reports the measured RMSE and camera mode instead of only a file
+  presence.
+- Changelog now includes design values from the blind review: global pause,
+  one-camera parity, plain-language state, and one primary action.
+
 ## [0.1.1] - 2026-11-20
 
 - Desktop app now uses the OhRats UI kit: Inter/Space Mono, warm neutrals,

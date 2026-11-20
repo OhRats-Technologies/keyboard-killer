@@ -195,6 +195,32 @@ _QSS = """
         font-size: $title_size;
         font-weight: 500;
     }
+    QLabel#Display {
+        color: $text;
+        font-size: 46px;
+        font-weight: 400;
+    }
+    QFrame#TopBar {
+        background: $background;
+        border-bottom: 1px solid $border;
+    }
+    QLabel#Breadcrumb {
+        color: $muted;
+        font-family: $mono_family;
+        font-size: 10px;
+        font-weight: 700;
+    }
+    QPushButton#Chip {
+        background: $surface;
+        color: $text;
+        border: 1px solid $border;
+        border-radius: 0px;
+        padding: 4px 10px;
+        min-height: 22px;
+        font-family: $mono_family;
+        font-size: 9px;
+        font-weight: 400;
+    }
     QLabel#Heading {
         color: $text;
         font-size: $heading_size;
@@ -335,8 +361,8 @@ _QSS = """
         color: $text;
     }
     QProgressBar {
-        background: $background;
-        border: 1px solid $border;
+        background: $surface_alt;
+        border: none;
         border-radius: 0px;
         color: $text;
         font-family: $mono_family;

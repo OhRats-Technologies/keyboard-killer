@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QProgressBar,
     QPushButton,
     QProgressBar,
@@ -38,6 +39,7 @@ from keyboard_killer.models.providers.openai_compat import OpenAICompatProvider
 from keyboard_killer.models.providers.presets import load_presets
 from keyboard_killer.models.providers.secrets import keyring_available, set_secret
 from keyboard_killer.platform.linux.cameras import discover_v4l_by_id
+from keyboard_killer.ui.components import eyebrow
 from keyboard_killer.ui.theme.tokens import load_bundled_fonts
 from keyboard_killer.ui.onboarding.flow import (
     OPTIONAL_STEPS,
@@ -284,6 +286,10 @@ class CamerasPage(StepPage):
         devices = discover_v4l_by_id()
         self.config.camera_mode = str(self.mode.currentData() or "auto")
         mono = self.config.camera_mode == "mono"
+        second = self.config.camera_mode == "stereo" or (
+            self.config.camera_mode == "auto" and len(devices) >= 2
+        )
+        self._second_visible = second
         for combo, current in ((self.cam1, self.config.cam1_by_id), (self.cam2, self.config.cam2_by_id)):
             combo.clear()
             combo.addItem("Choose a camera", "")
@@ -294,15 +300,19 @@ class CamerasPage(StepPage):
                 combo.addItem(Path(current).name, current)
                 index = combo.count() - 1
             combo.setCurrentIndex(index if index >= 0 else 0)
-            combo.setEnabled(not mono or combo is self.cam1)
+            combo.setEnabled(second if combo is self.cam2 else True)
             combo.currentIndexChanged.connect(self._start_previews)
-        self.preview2.setVisible(not mono)
+        self.preview2.setVisible(second)
         self._start_previews()
         if mono:
             self.problem.setText("Mono mode uses one camera. Stereo gives better depth and head-pose tolerance.")
-        elif len(devices) < 2:
+        elif self.config.camera_mode == "stereo" and len(devices) < 2:
             self.problem.setText(
                 "Stereo mode needs two stable cameras. Choose mono, or connect a second camera and refresh."
+            )
+        elif len(devices) < 2:
+            self.problem.setText(
+                "One camera found. Automatic will use the mono path; add a second camera for stereo."
             )
         else:
             self.problem.setText("")
@@ -315,7 +325,7 @@ class CamerasPage(StepPage):
             self.preview2.setText("Preview disabled in tests")
             return
         self.preview1.start(self.config.cam1_by_id)
-        if self.config.camera_mode == "mono":
+        if not getattr(self, "_second_visible", True):
             self.preview2.stop()
             self.preview2.setText("Not used in mono mode")
         else:
@@ -381,9 +391,19 @@ class CalibrationPage(StepPage):
 
     def refresh(self) -> None:
         exists = self.paths.calibration_path.exists()
-        self.status.setText(
-            f"Calibration file: {self.paths.calibration_path} ({'ready' if exists else 'missing'})"
-        )
+        quality = ""
+        if exists:
+            try:
+                from keyboard_killer.vision.calibrator import StereoGazeModel
+
+                model = StereoGazeModel.load(self.paths.calibration_path)
+                quality = (
+                    f" · {model.camera_mode.upper()} · "
+                    f"{model.rmse_x:.0f}px / {model.rmse_y:.0f}px RMSE"
+                )
+            except Exception:
+                quality = ""
+        self.status.setText(f"CALIBRATION {'READY' if exists else 'MISSING'}{quality}")
         self.status.setObjectName("Success" if exists else "Warning")
 
     def run_calibration(self) -> None:
@@ -669,8 +689,31 @@ class OnboardingWindow(QDialog):
         for step in STEPS:
             self.stack.addWidget(self.pages[step])
 
-        layout = QVBoxLayout(self)
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        side = QFrame()
+        side.setObjectName("Sidebar")
+        side.setFixedWidth(224)
+        side_layout = QVBoxLayout(side)
+        side_layout.setContentsMargins(18, 22, 18, 18)
+        mark = QLabel("KEYBOARD-KILLER")
+        mark.setObjectName("Wordmark")
+        side_layout.addWidget(mark)
+        side_layout.addWidget(eyebrow("SETUP"))
+        self.step_list = QListWidget()
+        self.step_list.setObjectName("Nav")
+        self.step_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.step_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.step_list.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        for item in STEPS:
+            self.step_list.addItem(item.value.replace("stt", "speech").replace("provider", "ai provider").title())
+        side_layout.addWidget(self.step_list, 1)
+        root.addWidget(side)
+        right = QWidget()
+        right.setObjectName("Content")
+        layout = QVBoxLayout(right)
         layout.setContentsMargins(32, 22, 32, 22)
+        root.addWidget(right, 1)
         self.progress = QProgressBar()
         self.progress.setRange(0, len(STEPS) - 1)
         self.progress.setTextVisible(False)
@@ -703,7 +746,11 @@ class OnboardingWindow(QDialog):
             if isinstance(candidate, CamerasPage) and candidate is not page:
                 candidate.close_previews()
         self.stack.setCurrentWidget(page)
-        self.progress.setValue(STEPS.index(step))
+        index = STEPS.index(step)
+        self.step_list.setCurrentRow(index)
+        if self.step_list.item(index) is not None:
+            self.step_list.item(index).setSelected(True)
+        self.progress.setValue(index)
         self.step_label.setText(
             f"{STEPS.index(step) + 1:02d} / {len(STEPS):02d}  ·  {step.value.upper()}"
         )

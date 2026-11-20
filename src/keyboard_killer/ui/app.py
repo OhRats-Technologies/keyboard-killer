@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import os
+from datetime import datetime, timezone
 from collections.abc import Callable
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QPushButton,
     QStackedWidget,
@@ -38,132 +40,211 @@ from keyboard_killer.ui.settings.window import SettingsPanel
 from keyboard_killer.ui.theme.tokens import ThemeName, load_bundled_fonts, stylesheet, tokens_for
 from keyboard_killer.voice.stt.factory import stt_report
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
+
+
+class GazeField(QWidget):
+    """Quiet instrument placeholder; never pretends to have live gaze data."""
+
+    def __init__(self, window: "MainWindow") -> None:
+        super().__init__()
+        self.window = window
+        self.live = False
+        self.setMinimumSize(240, 150)
+
+    def set_live(self, value: bool) -> None:
+        self.live = value
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        from PySide6.QtGui import QColor, QPainter, QPen
+
+        tokens = self.window.theme_tokens
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(tokens.surface))
+        line = QColor(tokens.border)
+        line.setAlpha(45)
+        painter.setPen(QPen(line, 1))
+        step = 20
+        for x in range(0, self.width(), step):
+            painter.drawLine(x, 0, x, self.height())
+        for y in range(0, self.height(), step):
+            painter.drawLine(0, y, self.width(), y)
+        cx, cy = self.width() // 2, self.height() // 2
+        painter.setPen(QPen(QColor(tokens.muted), 1))
+        painter.drawLine(cx - 12, cy, cx + 12, cy)
+        painter.drawLine(cx, cy - 12, cx, cy + 12)
+        painter.setPen(QPen(QColor(tokens.text), 1))
+        painter.drawRect(cx - 3, cy - 3, 6, 6)
+        painter.setPen(QColor(tokens.muted))
+        font = painter.font()
+        font.setPointSize(7)
+        painter.setFont(font)
+        painter.drawText(10, 16, "GAZE FIELD")
+        painter.drawText(
+            10,
+            self.height() - 12,
+            "WAITING FOR VISION" if not self.live else "LIVE",
+        )
+        painter.end()
 
 
 class HomePanel(QWidget):
-    def __init__(self, window: MainWindow) -> None:
+    def __init__(self, window: "MainWindow") -> None:
         super().__init__()
         self.window = window
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        title = QLabel("Keyboard-Killer")
-        title.setObjectName("Title")
-        layout.addWidget(title)
-        eyebrow_label = QLabel("LOCAL GAZE + VOICE")
-        eyebrow_label.setObjectName("Eyebrow")
-        layout.addWidget(eyebrow_label)
-        self.status = QLabel("STOPPED")
-        self.status.setObjectName("Pill")
-        self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status.setMaximumWidth(220)
-        layout.addWidget(self.status)
+        layout.setSpacing(40)
+
+        left = QVBoxLayout()
+        left.setSpacing(12)
+        self.state_label = QLabel("STATE · OFFLINE")
+        self.state_label.setObjectName("Eyebrow")
+        left.addWidget(self.state_label)
+        self.headline = QLabel("Stopped.")
+        self.headline.setObjectName("Display")
+        left.addWidget(self.headline)
         self.detail = QLabel("Set up cameras and calibration, then start listening.")
         self.detail.setObjectName("Muted")
         self.detail.setWordWrap(True)
-        layout.addWidget(self.detail)
+        self.detail.setMaximumWidth(620)
+        left.addWidget(self.detail)
 
         actions = QHBoxLayout()
         self.primary = QPushButton("START LISTENING")
         self.primary.setObjectName("Primary")
         self.primary.clicked.connect(self.toggle)
         actions.addWidget(self.primary)
-        setup = QPushButton("Open setup")
-        setup.clicked.connect(window.open_onboarding)
-        actions.addWidget(setup)
-        diagnostics = QPushButton("Diagnostics")
-        diagnostics.clicked.connect(lambda: window.show_page("Diagnostics"))
-        actions.addWidget(diagnostics)
+        history = QPushButton("VIEW HISTORY")
+        history.clicked.connect(lambda: window.show_page("History"))
+        actions.addWidget(history)
         actions.addStretch(1)
-        layout.addLayout(actions)
+        left.addLayout(actions)
 
-        setup = QFrame()
-        setup.setObjectName("Card")
-        setup_layout = QVBoxLayout(setup)
-        head = QHBoxLayout()
-        head.addWidget(eyebrow("SETUP"))
-        head.addStretch(1)
-        finish = QPushButton("OPEN SETUP")
-        finish.clicked.connect(window.open_onboarding)
-        head.addWidget(finish)
-        setup_layout.addLayout(head)
-        self.checklist = {}
+        rule = QFrame()
+        rule.setObjectName("Divider")
+        left.addWidget(rule)
+
+        self.last_heard = QLabel("Nothing heard yet.")
+        self.last_heard.setObjectName("Muted")
+        self.last_heard.setWordWrap(True)
+        self.last_clicked = QLabel("Nothing clicked yet.")
+        self.last_clicked.setObjectName("Muted")
+        self.last_clicked.setWordWrap(True)
+        pair = QHBoxLayout()
+        for title, value in (("LAST HEARD", self.last_heard), ("LAST CLICKED", self.last_clicked)):
+            column = QVBoxLayout()
+            column.addWidget(eyebrow(title))
+            column.addWidget(value)
+            column.addStretch(1)
+            pair.addLayout(column, 1)
+        left.addLayout(pair)
+
+        try_row = QHBoxLayout()
+        try_row.addWidget(eyebrow("TRY SAYING"))
+        for text in ("click send", "scroll down", "pause control"):
+            chip = QPushButton(text)
+            chip.setObjectName("Chip")
+            chip.setEnabled(False)
+            try_row.addWidget(chip)
+        try_row.addStretch(1)
+        left.addLayout(try_row)
+        left.addStretch(1)
+        privacy = QLabel("CAMERA + VOICE LOCAL  ·  NOTHING LEAVES THIS MACHINE")
+        privacy.setObjectName("Eyebrow")
+        left.addWidget(privacy)
+        layout.addLayout(left, 3)
+
+        instrument = Card()
+        instrument.setMaximumWidth(360)
+        instrument.layout.addWidget(eyebrow("INSTRUMENT"))
+        self.gaze_field = GazeField(window)
+        instrument.layout.addWidget(self.gaze_field)
+        self.rows = {}
         for key, label in (
-            ("input", "Input and microphone"),
             ("cameras", "Cameras"),
-            ("calibration", "Calibration"),
+            ("gaze", "Gaze"),
             ("speech", "Speech model"),
-            ("provider", "Optional AI provider"),
+            ("latency", "Latency"),
+            ("mic", "Microphone"),
         ):
             row = QHBoxLayout()
             row.addWidget(QLabel(label))
             row.addStretch(1)
-            value = QLabel("")
-            value.setObjectName("Muted")
+            value = QLabel("—")
+            value.setObjectName("Mono")
             row.addWidget(value)
-            setup_layout.addLayout(row)
-            self.checklist[key] = value
-        layout.addWidget(setup)
-
-        card = QFrame()
-        card.setObjectName("Card")
-        card_layout = QVBoxLayout(card)
-        card_layout.addWidget(eyebrow("LAST ACTION"))
-        self.last_action = QLabel("No actions yet.")
-        self.last_action.setObjectName("Muted")
-        self.last_action.setWordWrap(True)
-        card_layout.addWidget(self.last_action)
-        layout.addWidget(card)
-        layout.addStretch(1)
+            instrument.layout.addLayout(row)
+            self.rows[key] = value
+        details = QPushButton("VIEW DETAILS")
+        details.clicked.connect(lambda: window.show_page("Diagnostics"))
+        instrument.layout.addWidget(details)
+        layout.addWidget(instrument, 2)
         self.refresh()
+
+    def _set_state(self, state: str) -> None:
+        self.state_label.setText(f"STATE · {state.upper()}")
+        self.gaze_field.set_live(state == "listening")
 
     def refresh(self) -> None:
         status = self.window.controller.status
-        self.status.setText(status.state.value.upper())
-        self.detail.setText(status.detail or "Ready.")
-        self.primary.setText(
-            "START LISTENING"
-            if status.state in (SessionState.STOPPED, SessionState.ERROR, SessionState.PAUSED)
-            else "PAUSE"
-        )
-        recent = self.window.history.recent(1)
-        if recent:
-            item = recent[0]
-            self.last_action.setText(
-                f"{item['transcript']} -> {item['route']} ({item['latency_ms']:.0f} ms)"
-                if item["latency_ms"]
-                else f"{item['transcript']} -> {item['route']}"
+        if status.state is SessionState.LISTENING:
+            self.headline.setText("Listening.")
+            self.detail.setText(
+                "Gaze and voice are on. Pause stops both and releases the camera."
             )
-        self.window.primary_action = self.primary
-        self._refresh_checklist()
+            self._set_state("live")
+            self.primary.setText("PAUSE CONTROL")
+        elif status.state is SessionState.PAUSED:
+            self.headline.setText("Paused.")
+            self.detail.setText(
+                "Nothing is watching or listening. Resume when you are ready."
+            )
+            self._set_state("paused")
+            self.primary.setText("RESUME")
+        elif status.state is SessionState.ERROR:
+            self.headline.setText("Needs attention.")
+            self.detail.setText(status.detail or "Open diagnostics for the next action.")
+            self._set_state("needs attention")
+            self.primary.setText("START LISTENING")
+        else:
+            self.headline.setText("Stopped.")
+            self.detail.setText(
+                status.detail or "Set up cameras and calibration, then start listening."
+            )
+            self._set_state("offline")
+            self.primary.setText("START LISTENING")
 
-    def _refresh_checklist(self) -> None:
-        config = self.window.config
-        uinput = Path("/dev/uinput").exists() and os.access("/dev/uinput", os.W_OK)
-        inputs = bool(Path("/dev/input").glob("event*"))
-        self.checklist["input"].setText(
-            "READY" if uinput and inputs else "NEEDS SETUP"
+        recent = self.window.history.recent(2)
+        heard = next((item for item in recent if item.get("transcript")), None)
+        clicked = next((item for item in recent if item.get("target") or item.get("route")), None)
+        self.last_heard.setText(
+            f"“{heard['transcript']}”" if heard else "Nothing heard yet."
         )
-        self.checklist["input"].setObjectName("Success" if uinput and inputs else "Warning")
+        self.last_clicked.setText(
+            f"{clicked['target'] or clicked['route']}" if clicked else "Nothing clicked yet."
+        )
+
         from keyboard_killer.platform.linux.cameras import resolve_camera_config
         from keyboard_killer.voice.stt.factory import stt_report
 
         mode, cam1, cam2 = resolve_camera_config(
-            config.camera_mode, config.cam1_by_id, config.cam2_by_id
+            self.window.config.camera_mode,
+            self.window.config.cam1_by_id,
+            self.window.config.cam2_by_id,
         )
-        self.checklist["cameras"].setText(
-            f"{mode.upper()} · {'2 CAMERAS' if cam2 else '1 CAMERA'}"
-        )
-        self.checklist["cameras"].setObjectName("Success" if cam1 else "Warning")
+        self.rows["cameras"].setText(f"{mode.upper()} · {'2' if cam2 else '1'}")
         calibrated = self.window.paths.calibration_path.exists()
-        self.checklist["calibration"].setText("READY" if calibrated else "NEEDS SETUP")
-        self.checklist["calibration"].setObjectName("Success" if calibrated else "Warning")
-        speech = stt_report(config, paths=self.window.paths)
-        ready = speech.get("selected") == "parakeet"
-        self.checklist["speech"].setText("READY" if ready else "DOWNLOAD NEEDED")
-        self.checklist["speech"].setObjectName("Success" if ready else "Warning")
-        self.checklist["provider"].setText("OPTIONAL")
-        self.checklist["provider"].setObjectName("Muted")
+        self.rows["gaze"].setText("CALIBRATED" if calibrated else "NOT CALIBRATED")
+        speech = stt_report(self.window.config, paths=self.window.paths)
+        self.rows["speech"].setText(
+            "READY" if speech.get("selected") == "parakeet" else "DOWNLOAD NEEDED"
+        )
+        latency = next((item["latency_ms"] for item in recent if item.get("latency_ms")), None)
+        self.rows["latency"].setText(f"{latency:.0f} MS" if latency else "—")
+        self.rows["mic"].setText("READY" if status.state is SessionState.LISTENING else "OFF")
+        self.window.primary_action = self.primary
 
     def toggle(self) -> None:
         status = self.window.controller.status
@@ -174,19 +255,39 @@ class HomePanel(QWidget):
         self.refresh()
         self.window.refresh_tray()
 
-    def paintEvent(self, event) -> None:  # noqa: N802
-        super().paintEvent(event)
-        tokens = self.window.theme_tokens
-        color = QColor(tokens.border)
-        color.setAlpha(28)
-        painter = QPainter(self)
-        painter.setPen(QPen(color, 1))
-        step = 40
-        for x in range(0, self.width(), step):
-            painter.drawLine(x, 0, x, self.height())
-        for y in range(0, self.height(), step):
-            painter.drawLine(0, y, self.width(), y)
-        painter.end()
+
+class SetupPanel(QWidget):
+    def __init__(self, window: "MainWindow") -> None:
+        super().__init__()
+        self.window = window
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        title = QLabel("Setup")
+        title.setObjectName("Heading")
+        layout.addWidget(title)
+        card = Card()
+        self.body = QLabel("")
+        self.body.setWordWrap(True)
+        self.body.setObjectName("Muted")
+        card.layout.addWidget(self.body)
+        action = QPushButton("OPEN SETUP")
+        action.setObjectName("Primary")
+        action.clicked.connect(window.open_onboarding)
+        card.layout.addWidget(action, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(card)
+        layout.addStretch(1)
+        self.refresh()
+
+    def refresh(self) -> None:
+        if self.window.flow.is_complete:
+            self.body.setText(
+                "Setup is complete. Review permissions, cameras, calibration, and the speech model."
+            )
+        else:
+            self.body.setText(
+                "About 10 minutes. Permissions, one or two cameras, calibration, the speech model, "
+                "an optional AI provider, and one practice click. Your progress is saved."
+            )
 
 
 class CamerasPanel(QWidget):
@@ -419,7 +520,7 @@ class AboutPanel(QWidget):
         layout.addWidget(title)
         text = QLabel(
             f"Keyboard-Killer {VERSION}\n\n"
-            "Dual-camera stereo gaze, pop-click, and voice control.\n"
+            "One- or two-camera gaze, pop-click, and voice control.\n"
             "Speech: NVIDIA Parakeet TDT 0.6B v2 (CC-BY-4.0), ONNX export by istupakov.\n"
             "Camera and speech processing stay on this device. Optional AI providers are chosen by you.\n\n"
             "Type: Inter and Space Mono (SIL Open Font License)."
@@ -430,7 +531,17 @@ class AboutPanel(QWidget):
 
 
 class MainWindow(QMainWindow):
-    PAGES = ("Home", "Cameras", "Calibration", "Models", "Settings", "History", "Diagnostics", "About")
+    PAGES = (
+        "Home",
+        "Setup",
+        "Cameras",
+        "Calibration",
+        "Models",
+        "History",
+        "Diagnostics",
+        "Settings",
+        "About",
+    )
 
     def __init__(
         self,
@@ -472,30 +583,58 @@ class MainWindow(QMainWindow):
         wordmark = QLabel("KEYBOARD-KILLER")
         wordmark.setObjectName("Wordmark")
         side_layout.addWidget(wordmark)
-        side_layout.addSpacing(12)
+        tagline = QLabel("GAZE + VOICE")
+        tagline.setObjectName("Eyebrow")
+        side_layout.addWidget(tagline)
+        side_layout.addSpacing(16)
         self.nav = QListWidget()
         self.nav.setObjectName("Nav")
-        self.nav.addItems(list(self.PAGES))
-        self.nav.setCurrentRow(0)
+        self.nav_rows: dict[str, int] = {}
+        self._build_nav()
+        self.nav.setCurrentRow(self.nav_rows["Home"])
         self.nav.currentRowChanged.connect(self._select)
         side_layout.addWidget(self.nav, 1)
-        self.side_state = QLabel("STOPPED")
-        self.side_state.setObjectName("Mono")
-        side_layout.addWidget(self.side_state)
+        footer = QLabel("LOCAL ONLY  ·  NO ACCOUNT")
+        footer.setObjectName("Eyebrow")
+        side_layout.addWidget(footer)
         row.addWidget(sidebar)
 
         content = QWidget()
         content.setObjectName("Content")
         self.stack = QStackedWidget()
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(24, 20, 24, 20)
-        content_layout.addWidget(self.stack)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        topbar = QFrame()
+        topbar.setObjectName("TopBar")
+        topbar_layout = QHBoxLayout(topbar)
+        topbar_layout.setContentsMargins(28, 10, 28, 10)
+        self.breadcrumb = QLabel("KEYBOARD-KILLER — HOME")
+        self.breadcrumb.setObjectName("Breadcrumb")
+        topbar_layout.addWidget(self.breadcrumb)
+        topbar_layout.addStretch(1)
+        self.top_last = QLabel("")
+        self.top_last.setObjectName("Breadcrumb")
+        topbar_layout.addWidget(self.top_last)
+        self.theme_button = QPushButton("DARK")
+        self.theme_button.setObjectName("Chip")
+        self.theme_button.clicked.connect(self.toggle_theme)
+        topbar_layout.addWidget(self.theme_button)
+        self.status_chip = QLabel("STOPPED")
+        self.status_chip.setObjectName("Pill")
+        topbar_layout.addWidget(self.status_chip)
+        content_layout.addWidget(topbar)
+        page_host = QWidget()
+        page_layout = QVBoxLayout(page_host)
+        page_layout.setContentsMargins(28, 24, 28, 24)
+        page_layout.addWidget(self.stack)
+        content_layout.addWidget(page_host, 1)
         row.addWidget(content, 1)
         self.setCentralWidget(central)
 
         self.home = HomePanel(self)
         self.pages: dict[str, QWidget] = {
             "Home": self.home,
+            "Setup": SetupPanel(self),
             "Cameras": CamerasPanel(self),
             "Calibration": CalibrationPanel(self),
             "Models": ModelsPanel(self),
@@ -512,6 +651,24 @@ class MainWindow(QMainWindow):
         self.set_theme(theme or ThemeName.LIGHT)
         self.refresh_tray()
 
+    def _build_nav(self) -> None:
+        groups = (
+            ("CONTROL", ("Home", "Setup", "Cameras", "Calibration", "Models")),
+            ("RECORD", ("History", "Diagnostics")),
+            ("SYSTEM", ("Settings", "About")),
+        )
+        number = 0
+        for heading, entries in groups:
+            header = QListWidgetItem(heading)
+            header.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.nav.addItem(header)
+            for page in entries:
+                number += 1
+                item = QListWidgetItem(f"{number:02d}  {page}")
+                item.setData(Qt.ItemDataRole.UserRole, page)
+                self.nav.addItem(item)
+                self.nav_rows[page] = self.nav.count() - 1
+
     def set_theme(self, theme: ThemeName | str) -> None:
         self.theme_tokens = tokens_for(theme)
         app = QApplication.instance()
@@ -519,19 +676,33 @@ class MainWindow(QMainWindow):
             app.setStyleSheet(stylesheet(self.theme_tokens))
         else:
             self.setStyleSheet(stylesheet(self.theme_tokens))
+        if hasattr(self, "theme_button"):
+            self.theme_button.setText(
+                "LIGHT" if self.theme_tokens.name is ThemeName.DARK else "DARK"
+            )
+
+    def toggle_theme(self) -> None:
+        self.set_theme(
+            ThemeName.LIGHT
+            if self.theme_tokens.name is ThemeName.DARK
+            else ThemeName.DARK
+        )
 
     def _select(self, index: int) -> None:
-        if 0 <= index < len(self.PAGES):
-            page = self.pages[self.PAGES[index]]
+        item = self.nav.item(index)
+        name = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if name in self.pages:
+            page = self.pages[name]
             self.stack.setCurrentWidget(page)
+            self.breadcrumb.setText(f"KEYBOARD-KILLER — {str(name).upper()}")
             refresh = getattr(page, "refresh", None)
             if callable(refresh):
                 refresh()
 
     def show_page(self, name: str) -> None:
-        if name in self.PAGES:
-            self.nav.setCurrentRow(self.PAGES.index(name))
-            self._select(self.PAGES.index(name))
+        if name in self.pages:
+            self.nav.setCurrentRow(self.nav_rows.get(name, 0))
+            self._select(self.nav_rows.get(name, 0))
 
     def open_onboarding(self) -> OnboardingWindow:
         window = OnboardingWindow(
@@ -554,7 +725,23 @@ class MainWindow(QMainWindow):
 
     def refresh_tray(self) -> None:
         status = self.controller.status
-        self.side_state.setText(status.state.value.upper())
+        label = {
+            SessionState.STOPPED: "STOPPED",
+            SessionState.LISTENING: "LISTENING",
+            SessionState.PAUSED: "PAUSED",
+            SessionState.ERROR: "NEEDS ATTENTION",
+        }.get(status.state, status.state.value.upper())
+        self.status_chip.setText(label)
+        recent = self.history.recent(1)
+        if recent:
+            try:
+                created = datetime.fromisoformat(str(recent[0]["created_at"]))
+                age = max(0, int((datetime.now(timezone.utc) - created).total_seconds()))
+                self.top_last.setText(f"LAST ACTION {age}s AGO")
+            except (TypeError, ValueError):
+                self.top_last.setText("LAST ACTION RECORDED")
+        else:
+            self.top_last.setText("")
         if self.tray is not None:
             self.tray.set_state(status.state, status.detail)
 

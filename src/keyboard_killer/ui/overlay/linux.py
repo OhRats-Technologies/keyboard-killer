@@ -103,8 +103,8 @@ class X11Overlay(Overlay):
         self.widget.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.label = QLabel("Listening", self.widget)
         self.label.setStyleSheet(
-            "background: rgba(24, 27, 34, 0.94); color: #f4f6fb;"
-            "border-radius: 14px; padding: 6px 14px; font-size: 13px;"
+            "background: #1a1a1b; color: #efede5; border: 1px solid #634936;"
+            "padding: 6px 14px; font-family: 'Space Mono'; font-size: 11px;"
         )
         self.widget.resize(280, 40)
         self._timer = QTimer(self.widget)

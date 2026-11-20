@@ -9,7 +9,7 @@ that exact commit.
 `pyproject.toml` and the newest `CHANGELOG.md` entry must agree:
 
 ```sh
-VERSION="0.1.1"
+VERSION="0.1.2"
 ./scripts/check-version.sh "$VERSION"
 ```
 
@@ -24,8 +24,8 @@ before anything is published.
 4. Tag and push:
 
 ```sh
-git tag -a v0.1.1 -m "Keyboard-Killer 0.1.1"
-git push origin v0.1.1
+git tag -a v0.1.2 -m "Keyboard-Killer 0.1.2"
+git push origin v0.1.2
 ```
 
 `.github/workflows/release.yml` then:
@@ -60,7 +60,7 @@ site container mounts `/data/keyboard-killer-releases` at
 ## Verify
 
 ```sh
-gh release view v0.1.1 --repo OhRats-Technologies/keyboard-killer \
+gh release view v0.1.2 --repo OhRats-Technologies/keyboard-killer \
   --json tagName,isDraft --jq '.tagName+" draft=\(.isDraft)"'
 curl -fsS https://keyboard-killer.ohrats.party/releases/SHA256SUMS
 curl -fsSIL https://keyboard-killer.ohrats.party/releases/keyboard-killer_amd64.deb
