@@ -47,7 +47,9 @@ def _report():
     )
 
 
-def _compare_golden(pixmap, name: str, tolerance: float = 3.0) -> None:
+def _compare_golden(pixmap, name: str, tolerance: float = 6.0) -> None:
+    # Text antialiasing differs slightly between Linux font stacks/Qt patch levels.
+    # Six percent still catches layout and token regressions.
     golden_path = GOLDENS / name
     image = pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
     assert image.width() > 400 and image.height() > 300
