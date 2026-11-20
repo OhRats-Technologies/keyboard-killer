@@ -20,6 +20,14 @@ def test_version_script_matches_pyproject() -> None:
     )
     assert result.returncode == 0
     assert result.stdout.strip() == "0.1.0"
+    branch = subprocess.run(
+        [str(ROOT / "scripts" / "check-version.sh"), "0.1.0"],
+        cwd=ROOT,
+        env={**os.environ, "GITHUB_REF": "refs/heads/main", "GITHUB_REF_NAME": "main"},
+        capture_output=True,
+        text=True,
+    )
+    assert branch.returncode == 0
 
 
 def test_landing_page_links_stable_assets() -> None:
