@@ -36,7 +36,12 @@ def test_landing_page_links_stable_assets() -> None:
     assert 'class="site-nav"' in html
     assert "assets.ohrats.party/assets/logo" in html
     assert "install.sh" in html
+    assert 'href="/docs.html"' in html
+    assert "github.com/OhRats-Technologies/keyboard-killer" not in html
     assert "keyboard-killer_amd64.deb" in html
+    docs = (SITE / "docs.html").read_text()
+    assert "Two stable V4L2 cameras" in docs
+    assert "not implemented" in docs
     assert "keyboard-killer-x86_64.AppImage" in html
     assert "macOS is not available yet" in html
     assert "Windows is not available yet" in html

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Keyboard-Killer docs</title>
+  <meta name="description" content="Install, requirements, privacy, and known limitations for Keyboard-Killer." />
+  <link rel="icon" type="image/svg+xml" href="https://assets.ohrats.party/assets/logo.092a1cece4d0.svg" />
+  <script src="https://assets.ohrats.party/assets/theme.b6e0fe408633.js"></script>
+  <script src="https://assets.ohrats.party/assets/menu.a8b9a29f9ccc.js" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://assets.ohrats.party/assets/ohrats.abf84a1e6ae1.css" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <nav class="site-nav">
+    <div class="nav-container">
+      <div class="nav-left">
+        <a href="https://ohrats.party/" class="logo" aria-label="OhRats home">
+          <img src="https://assets.ohrats.party/assets/logo.092a1cece4d0.svg" alt="OhRats" class="logo-image" />
+          <span class="logo-text">OhRats</span>
+        </a>
+        <div class="desktop-menu">
+          <a href="/" class="menu-item"><span class="menu-number">01</span><span class="menu-label">Keyboard-Killer</span></a>
+          <a href="/docs.html" class="menu-item nav-highlight" aria-current="page"><span class="menu-number">02</span><span class="menu-label">Docs</span></a>
+          <a href="https://github.com/OhRats-Technologies" class="menu-item"><span class="menu-number">03</span><span class="menu-label">GitHub</span></a>
+        </div>
+      </div>
+      <div class="cta-buttons">
+        <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme"></button>
+        <a href="https://github.com/OhRats-Technologies" class="github-link" aria-label="GitHub"><span class="github-icon" aria-hidden="true"></span></a>
+        <a href="/#install" class="or-button">Install</a>
+      </div>
+      <button class="mobile-menu-btn" data-menu-toggle aria-controls="mobile-menu" aria-expanded="false" aria-label="Open menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="mobile-menu" id="mobile-menu">
+      <a href="/" class="mobile-menu-link">01 Keyboard-Killer</a>
+      <a href="/docs.html" class="mobile-menu-link">02 Docs</a>
+      <a href="https://github.com/OhRats-Technologies" class="mobile-menu-link">03 GitHub</a>
+      <div class="mobile-divider"></div>
+      <div class="mobile-theme-row"><span class="mobile-theme-label">Theme</span><button class="mobile-theme-btn" data-theme-toggle aria-label="Toggle theme"></button></div>
+      <a href="/#install" class="mobile-menu-link">Install</a>
+    </div>
+  </nav>
+
+  <main>
+    <header class="hero-header kk-docs-hero">
+      <div class="ohrats-grid" aria-hidden="true"></div>
+      <div class="hero-content">
+        <div class="badge-container kk-badge">
+          <span class="badge-line" aria-hidden="true"></span>
+          <span class="badge-text">Keyboard-Killer documentation</span>
+          <span class="badge-line" aria-hidden="true"></span>
+        </div>
+        <h1>Install. Set up. <span class="hero-muted">Look and speak.</span></h1>
+        <p class="kk-lede">Everything a new user needs for the Linux release, and an honest list of what is not ready.</p>
+      </div>
+    </header>
+
+    <section class="kk-section">
+      <div class="container kk-docs">
+        <section id="install">
+          <span class="badge-text">01 / Install</span>
+          <h2>One command</h2>
+          <p>On Debian or Ubuntu, the installer uses the self-contained <code>.deb</code> and <code>apt</code>. On other Linux distributions it installs the AppImage for the current user.</p>
+          <pre><code>curl -fsSL https://keyboard-killer.ohrats.party/install.sh | sh</code></pre>
+          <p>Both paths verify the published <code>SHA256SUMS</code>. The <code>.deb</code> includes the <code>/dev/uinput</code> udev rule, a desktop entry, and an optional systemd user unit.</p>
+        </section>
+
+        <section id="requirements">
+          <span class="badge-text">02 / Requirements</span>
+          <h2>Linux, x86_64, two cameras</h2>
+          <ul>
+            <li>Linux x86_64, PipeWire or PulseAudio, and a writable <code>/dev/uinput</code>.</li>
+            <li>Two stable V4L2 cameras for stereo gaze. The app reports a single camera as degraded; a single-camera mode is not implemented.</li>
+            <li>CPU-only speech recognition by default (Parakeet int8). CUDA is opt-in; no CUDA toolkit is required for the default install.</li>
+            <li>Screen capture and AT-SPI are optional; pointer/voice commands work without an AI provider.</li>
+          </ul>
+        </section>
+
+        <section id="first-run">
+          <span class="badge-text">03 / First run</span>
+          <h2>Guided setup, resumable</h2>
+          <ol>
+            <li>Permissions: camera, microphone, input devices, screen capture.</li>
+            <li>Cameras: choose two stable <code>/dev/v4l/by-id</code> devices.</li>
+            <li>Calibration: the full-screen target window. Calibration is required before vision starts.</li>
+            <li>Speech: download the pinned Parakeet model (about 630 MB) or keep the Whisper fallback.</li>
+            <li>Optional AI provider, practice, and ready.</li>
+          </ol>
+          <p>Setup progress is stored in <code>onboarding.json</code>; closing the app does not restart the flow.</p>
+        </section>
+
+        <section id="cli">
+          <span class="badge-text">04 / CLI</span>
+          <h2>The terminal stays a fallback</h2>
+          <pre><code>keyboard-killer doctor
+keyboard-killer doctor --json
+keyboard-killer models status
+keyboard-killer providers status
+keyboard-killer run-voice --seconds 5 --dry-run</code></pre>
+        </section>
+
+        <section id="privacy">
+          <span class="badge-text">05 / Privacy</span>
+          <h2>Local by default</h2>
+          <p>Camera, speech, and history stay on the machine. API keys live in the OS keychain. Screenshots only leave the device if you explicitly enable a remote gaze VLM; text providers receive the transcribed command and a trimmed page/UI summary.</p>
+        </section>
+
+        <section id="limitations">
+          <span class="badge-text">06 / Known limitations</span>
+          <h2>What is not ready</h2>
+          <ul>
+            <li>macOS and Windows are capability stubs; no installers are published. Linux is the only implemented host.</li>
+            <li>Two-camera calibration, <code>/dev/uinput</code> injection, screen capture, and GNOME Wayland capture are hardware checks; they are not claimed as tested on every desktop.</li>
+            <li>A persistent click-through overlay is available on X11. On Wayland the app uses the tray/toast and Firefox HUD fallback.</li>
+            <li>The Firefox extension and a targeting benchmark are not packaged yet.</li>
+          </ul>
+        </section>
+
+        <p class="kk-docs-back"><a class="header-link" href="/">Back to Keyboard-Killer</a></p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-content">
+      <div class="footer-brand">
+        <a href="https://ohrats.party/" aria-label="OhRats Technologies home"><img src="https://assets.ohrats.party/assets/logo.092a1cece4d0.svg" alt="OhRats" class="footer-logo" /></a>
+        <div class="footer-socials">
+          <a href="https://x.com/ohratsparty" class="footer-social-link" aria-label="X (Twitter)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none"><path d="M28 28L18.6145 14.0124L18.6305 14.0255L27.0929 4H24.265L17.3713 12.16L11.8968 4H4.48021L13.2425 17.0593L13.2414 17.0582L4 28H6.82792L14.4921 18.9215L20.5834 28H28ZM10.7763 6.18182L23.9449 25.8182H21.7039L8.52468 6.18182H10.7763Z" fill="currentColor"></path></svg></a>
+          <a href="https://github.com/OhRats-Technologies" class="footer-social-link" aria-label="GitHub"><span class="github-icon" aria-hidden="true"></span></a>
+        </div>
+      </div>
+      <nav class="footer-links">
+        <div class="footer-column"><span class="footer-column-label">Tools</span><a href="https://keyboard-killer.ohrats.party/" class="footer-link">Keyboard-Killer</a><a href="https://wakebar.ohrats.party/" class="footer-link">WakeBar</a><a href="https://rc.ohrats.party/" class="footer-link">RC</a></div>
+        <div class="footer-column"><span class="footer-column-label">Resources</span><a href="/docs.html" class="footer-link">Docs</a><a href="https://github.com/OhRats-Technologies" class="footer-link">GitHub</a></div>
+        <div class="footer-column"><span class="footer-column-label">Company</span><a href="https://ohrats.party/#research" class="footer-link">Research</a><a href="mailto:contact@ohrats.party" class="footer-link">Contact</a></div>
+      </nav>
+    </div>
+    <div class="footer-bottom"><span class="footer-copyright">© 2026 OhRats Technologies. All rights reserved.</span></div>
+  </footer>
+</body>
+</html>

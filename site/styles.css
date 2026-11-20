@@ -452,3 +452,61 @@ main {
     padding: 4rem 1.25rem;
   }
 }
+
+.kk-docs-hero {
+  padding-top: 5rem;
+  padding-bottom: 3.5rem;
+}
+
+.kk-docs {
+  max-width: 54rem;
+}
+
+.kk-docs section {
+  padding: 2.5rem 0;
+  border-bottom: 1px solid var(--or-border);
+}
+
+.kk-docs section:first-of-type {
+  padding-top: 0;
+}
+
+.kk-docs h2 {
+  margin-bottom: 1rem;
+  font-size: clamp(1.6rem, 3vw, 2.25rem);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+}
+
+.kk-docs p,
+.kk-docs li {
+  color: var(--or-text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+}
+
+.kk-docs ul,
+.kk-docs ol {
+  margin: 0 0 1rem 1.25rem;
+}
+
+.kk-docs pre {
+  overflow-x: auto;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--or-border);
+  background: var(--or-surface);
+}
+
+.kk-docs pre code {
+  color: var(--or-text);
+  font-size: 0.8125rem;
+}
+
+.kk-docs code {
+  font-family: var(--or-font-mono);
+}
+
+.kk-docs-back {
+  padding-top: 2rem;
+}
