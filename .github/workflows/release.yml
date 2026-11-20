@@ -74,6 +74,7 @@ jobs:
           cp "dist/Keyboard-Killer-${VERSION}-x86_64.AppImage" dist/keyboard-killer-x86_64.AppImage
           cp site/install.sh dist/install.sh
           (cd dist && sha256sum keyboard-killer_amd64.deb keyboard-killer-x86_64.AppImage install.sh > SHA256SUMS)
+          printf '{"version":"%s"}\n' "$GITHUB_REF_NAME" > dist/version.json
           ar t dist/keyboard-killer_amd64.deb
           (cd dist && sha256sum -c SHA256SUMS)
       - name: Mirror release assets to keyboard-killer.ohrats.party
@@ -87,7 +88,7 @@ jobs:
           chmod 600 "$RUNNER_TEMP/deploy_key"
           scp -i "$RUNNER_TEMP/deploy_key" -o StrictHostKeyChecking=accept-new \
             dist/keyboard-killer_amd64.deb dist/keyboard-killer-x86_64.AppImage \
-            dist/SHA256SUMS "root@${COOLIFY_HOST}:/data/keyboard-killer-releases/"
+            dist/SHA256SUMS dist/version.json "root@${COOLIFY_HOST}:/data/keyboard-killer-releases/"
       - name: Publish immutable GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

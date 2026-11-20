@@ -62,15 +62,14 @@
     });
   }
 
-  // The release tag is the only version label; assets use stable names.
-  fetch("https://api.github.com/repos/OhRats-Technologies/keyboard-killer/releases/latest", {
-    headers: { Accept: "application/vnd.github+json" },
-  })
+  // The public mirror publishes a tiny version file with each release; the
+  // stable asset names are intentionally versionless.
+  fetch("/releases/version.json", { cache: "no-store" })
     .then((response) => (response.ok ? response.json() : null))
     .then((release) => {
-      if (!release || !release.tag_name) return;
+      if (!release || !release.version) return;
       document.querySelectorAll("[data-release-version]").forEach((node) => {
-        node.textContent = release.tag_name;
+        node.textContent = release.version;
       });
     })
     .catch(() => {});
