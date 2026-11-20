@@ -15,13 +15,14 @@ from rich.console import Console
 from keyboard_killer.audio.active_listener import ActiveVoiceListener
 from keyboard_killer.audio.pop_detector import PopTriggerStateMachine
 from keyboard_killer.audio.stt_engine import UnifiedAudioService
-from keyboard_killer.config import AppConfig, get_display_layout
+from keyboard_killer.config import AppConfig, current_paths, get_display_layout
 from keyboard_killer.input.click_harvest import EvdevMouseClickHarvester
 from keyboard_killer.input.pointer import DryRunPointerBackend, PointerBackend
 from keyboard_killer.platform.linux.hotkeys import EvdevHotkeyMonitor, resolve_hotkey_code
 from keyboard_killer.platform.linux.pointer import UInputManager
 from keyboard_killer.ipc.firefox_bridge import FirefoxDOMBridge
 from keyboard_killer.ipc.state import FLAG_FACE_DETECTED, SharedGazeReader
+from keyboard_killer.ipc.transcript import write_transcript
 from keyboard_killer.router.dispatcher import VoiceCommandRouter
 from keyboard_killer.router.gaze_vlm_clicker import GazeVLMClicker
 from keyboard_killer.models.providers.roles import resolve_gaze_vlm_role, resolve_text_role
@@ -259,6 +260,11 @@ def run_combined_daemon(
             )
 
             if config.always_on_voice:
+                transcript_path = current_paths().transcript_path
+
+                def _publish_transcript(text: str) -> None:
+                    write_transcript(transcript_path, text)
+
                 active_listener = ActiveVoiceListener(
                     on_speech_onset=_prewarm_gaze_vlm,
                     is_user_attending=_is_user_attending if enable_vision else None,
@@ -266,6 +272,7 @@ def run_combined_daemon(
                     require_command_prefix=(config.require_command_prefix and not dictate_unprefixed),
                     audio_device=config.audio_device,
                     stt_engine=stt,
+                    on_transcript=_publish_transcript,
                 )
                 out.print(
                     f"[green]ActiveVoiceListener ready ({active_listener.device}/{active_listener.compute_type}) "

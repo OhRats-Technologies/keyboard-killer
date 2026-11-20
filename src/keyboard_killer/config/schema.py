@@ -38,6 +38,7 @@ class AppConfig:
 
     camera_mode: str = "auto"
     camera_backend: str = "v4l2"
+    transcript_overlay: bool = False
     cam1_by_id: str = DEFAULT_CAM1_ID
     cam2_by_id: str = DEFAULT_CAM2_ID
     frame_width: int = 1280

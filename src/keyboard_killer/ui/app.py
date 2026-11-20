@@ -46,6 +46,7 @@ from keyboard_killer.ui.screen_cursor import ScreenCursor
 from keyboard_killer.ui.session import DaemonController, NullController, SessionController, SessionState
 from keyboard_killer.ui.settings.window import SettingsPanel
 from keyboard_killer.ui.theme.tokens import ThemeName, load_bundled_fonts, stylesheet, tokens_for
+from keyboard_killer.ui.transcript_overlay import TranscriptOverlayController
 from keyboard_killer.voice.stt.factory import stt_report
 
 VERSION = "0.1.2"
@@ -157,6 +158,15 @@ class HomePanel(QWidget):
         self.cursor_note.setWordWrap(True)
         instrument.layout.addWidget(self.cursor_note)
 
+        self.transcript_button = QPushButton("SHOW TRANSCRIPT OVERLAY")
+        self.transcript_button.setCheckable(True)
+        self.transcript_button.clicked.connect(self._toggle_transcript)
+        instrument.layout.addWidget(self.transcript_button)
+        self.transcript_note = QLabel("Parakeet text at the bottom of the screen.")
+        self.transcript_note.setObjectName("Mono")
+        self.transcript_note.setWordWrap(True)
+        instrument.layout.addWidget(self.transcript_note)
+
         details = QPushButton("VIEW DETAILS")
         details.clicked.connect(lambda: window.show_page("Diagnostics"))
         instrument.layout.addWidget(details)
@@ -236,6 +246,7 @@ class HomePanel(QWidget):
         self.rows["mic"].setText("READY" if status.state is SessionState.LISTENING else "OFF")
         self.window.primary_action = self.primary
         self._sync_cursor_controls()
+        self._sync_transcript_controls()
 
     def _toggle_cursor(self, checked: bool) -> None:
         if checked:
@@ -260,6 +271,8 @@ class HomePanel(QWidget):
             self.cursor_note.setText(status.error)
         elif status.running:
             self._sync_cursor_controls()
+        if not self.window.transcript_overlay.refresh() and self.transcript_button.isChecked():
+            self._sync_transcript_controls()
 
     def _sync_cursor_controls(self) -> None:
         running = self.window.screen_cursor.running
@@ -283,6 +296,38 @@ class HomePanel(QWidget):
         if self.window.screen_cursor.running:
             self._sync_cursor_controls()
 
+    def _toggle_transcript(self, checked: bool) -> None:
+        if checked:
+            if not self.window.transcript_overlay.start():
+                self.transcript_button.blockSignals(True)
+                self.transcript_button.setChecked(False)
+                self.transcript_button.blockSignals(False)
+                self.transcript_note.setText(
+                    self.window.transcript_overlay.error
+                    or "Transcript overlay unavailable."
+                )
+                return
+        else:
+            self.window.transcript_overlay.stop()
+        self.window.config.transcript_overlay = checked
+        self.window.config.save(self.window.paths.settings_path)
+        self._sync_transcript_controls()
+
+    def _sync_transcript_controls(self) -> None:
+        running = self.window.transcript_overlay.running
+        self.transcript_button.blockSignals(True)
+        self.transcript_button.setChecked(running)
+        self.transcript_button.blockSignals(False)
+        self.transcript_button.setText(
+            "HIDE TRANSCRIPT" if running else "SHOW TRANSCRIPT"
+        )
+        if running:
+            self.transcript_note.setText("ON · WAITING FOR THE NEXT TRANSCRIPT")
+        elif self.window.transcript_overlay.error:
+            self.transcript_note.setText(self.window.transcript_overlay.error)
+        else:
+            self.transcript_note.setText("Parakeet text at the bottom of the screen.")
+
     def poll_state(self) -> None:
         state = self.window.controller.status.state
         if state is not self._last_state:
@@ -294,6 +339,7 @@ class HomePanel(QWidget):
         self._cursor_timer.stop()
         self.gaze_field.shutdown()
         self.window.screen_cursor.stop()
+        self.window.transcript_overlay.stop()
 
     def toggle(self) -> None:
         status = self.window.controller.status
@@ -814,6 +860,7 @@ class MainWindow(QMainWindow):
         self.config = config or AppConfig.load(self.paths.settings_path)
         self.controller = controller or NullController()
         self.screen_cursor = ScreenCursor(paths=self.paths)
+        self.transcript_overlay = TranscriptOverlayController(paths=self.paths)
         self.flow = flow or OnboardingFlow(self.paths)
         self.enable_previews = enable_previews
         self.report_provider = report_provider
@@ -908,6 +955,8 @@ class MainWindow(QMainWindow):
         load_bundled_fonts()
         self.set_theme(theme or ThemeName.LIGHT)
         self.refresh_tray()
+        if self.config.transcript_overlay:
+            self.transcript_overlay.start()
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(1000)
         self._status_timer.timeout.connect(self.home.poll_state)
@@ -932,6 +981,7 @@ class MainWindow(QMainWindow):
         if settings is not None:
             settings.stop()
         self.home.shutdown()
+        self.transcript_overlay.stop()
         self.controller.quit()
 
     def _build_nav(self) -> None:

@@ -263,10 +263,12 @@ class ActiveVoiceListener:
         require_command_prefix: bool = True,
         audio_device: int | str | None = None,
         stt_engine: SttEngine | None = None,
+        on_transcript: Callable[[str], None] | None = None,
     ) -> None:
         self.on_speech_onset = on_speech_onset
         self.is_user_attending = is_user_attending
         self.require_command_prefix = require_command_prefix
+        self.on_transcript = on_transcript
         self.audio_device = audio_device
         self.sleeping = False
         if stt_engine is None:
@@ -439,6 +441,11 @@ class ActiveVoiceListener:
         clean = text.lower().strip(" .,!?\"'")
         if not clean or clean in _WHISPER_HALLUCINATIONS or len(clean) < 3:
             return
+        if self.on_transcript is not None:
+            try:
+                self.on_transcript(text.strip())
+            except Exception:
+                logger.debug("Transcript callback failed", exc_info=True)
 
         # Handle sleep / wake voice toggle
         if clean in ("go to sleep", "stop listening"):

@@ -93,6 +93,10 @@ class AppPaths:
     def history_db_path(self) -> Path:
         return self.history_dir / "actions.db"
 
+    @property
+    def transcript_path(self) -> Path:
+        return self.data_dir / "transcript.json"
+
     # --- cache ---------------------------------------------------------
     @property
     def downloads_dir(self) -> Path:

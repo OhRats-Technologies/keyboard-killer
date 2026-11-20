@@ -144,3 +144,36 @@ def test_cameras_panel_toggles_pipewire_sharing(qapp, tmp_path, monkeypatch) -> 
     finally:
         window.shutdown()
         window.close()
+
+
+def test_home_transcript_overlay_toggle_uses_the_controller(qapp, tmp_path) -> None:
+    window = _window(tmp_path)
+
+    class FakeTranscript:
+        def __init__(self):
+            self.running = False
+            self.error = ""
+
+        def start(self):
+            self.running = True
+            return True
+
+        def stop(self):
+            self.running = False
+
+        def refresh(self):
+            return self.running
+
+    try:
+        fake = FakeTranscript()
+        window.transcript_overlay = fake
+        window.home.transcript_button.click()
+        assert fake.running
+        assert window.home.transcript_button.text() == "HIDE TRANSCRIPT"
+        assert window.config.transcript_overlay is True
+        window.home.transcript_button.click()
+        assert not fake.running
+        assert window.config.transcript_overlay is False
+    finally:
+        window.shutdown()
+        window.close()
