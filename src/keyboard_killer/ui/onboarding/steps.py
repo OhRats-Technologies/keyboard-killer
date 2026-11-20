@@ -8,6 +8,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import cv2
+
 import numpy as np
 from PySide6.QtCore import QThread, QTimer, Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
@@ -46,7 +48,7 @@ from keyboard_killer.models.providers.openai_compat import OpenAICompatProvider
 from keyboard_killer.models.providers.presets import load_presets
 from keyboard_killer.models.providers.secrets import keyring_available, set_secret
 from keyboard_killer.platform.linux.cameras import discover_v4l_by_id
-from keyboard_killer.ui.components import eyebrow
+from keyboard_killer.ui.components import Card, eyebrow
 from keyboard_killer.ui.theme.tokens import load_bundled_fonts
 from keyboard_killer.ui.onboarding.flow import (
     OPTIONAL_STEPS,
@@ -178,19 +180,74 @@ class WelcomePage(StepPage):
         self.body.addStretch(1)
 
 
+class _ScreenCheckWorker(QThread):
+    done = Signal(object)
+    failed = Signal(str)
+
+    def run(self) -> None:
+        try:
+            if not sys.platform.startswith("linux"):
+                raise RuntimeError("The screen check is Linux-only.")
+            from keyboard_killer.config import get_display_layout
+            from keyboard_killer.platform.linux.screen import WaylandScreenCapturer
+
+            layout = get_display_layout()
+            image = WaylandScreenCapturer().capture_rect(
+                0, 0, layout.total_width, layout.total_height
+            )
+            self.done.emit(image)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
 class PermissionsPage(StepPage):
     step = OnboardingStep.PERMISSIONS
     next_label = "Continue"
 
-    def __init__(self, report_provider: Callable[[], DoctorReport] | None = None) -> None:
+    def __init__(
+        self,
+        report_provider: Callable[[], DoctorReport] | None = None,
+        *,
+        auto_screen: bool = True,
+    ) -> None:
         super().__init__()
         self.title.setText("Permissions")
         self.subtitle.setText(
             "Each row has one action. A denied permission marks the step unresolved, but it does not block setup."
         )
         self.report_provider = report_provider
+        self.auto_screen = auto_screen
+        self._screen_attempted = False
+        self._screen_worker: _ScreenCheckWorker | None = None
         self.rows = QGridLayout()
         self.body.addLayout(self.rows)
+
+        screen_card = Card()
+        screen_card.layout.addWidget(eyebrow("SCREEN ACCESS"))
+        screen_row = QHBoxLayout()
+        self.screen_preview = QLabel("Waiting for a screenshot…")
+        self.screen_preview.setObjectName("Muted")
+        self.screen_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.screen_preview.setFixedSize(320, 110)
+        self.screen_preview.setWordWrap(True)
+        screen_row.addWidget(self.screen_preview)
+        screen_side = QVBoxLayout()
+        screen_copy = QLabel(
+            "A test screenshot verifies the desktop portal. It stays in memory and is never saved."
+        )
+        screen_copy.setObjectName("Muted")
+        screen_copy.setWordWrap(True)
+        screen_side.addWidget(screen_copy)
+        self.screen_note = QLabel("NOT CAPTURED")
+        self.screen_note.setObjectName("Mono")
+        screen_side.addWidget(self.screen_note)
+        self.screen_button = QPushButton("CAPTURE TEST SCREENSHOT")
+        self.screen_button.clicked.connect(self.capture_screen)
+        screen_side.addWidget(self.screen_button, 0, Qt.AlignmentFlag.AlignLeft)
+        screen_row.addLayout(screen_side, 1)
+        screen_card.layout.addLayout(screen_row)
+        self.body.addWidget(screen_card)
+
         self.body.addStretch(1)
         refresh = QPushButton("Check again")
         refresh.clicked.connect(self.refresh)
@@ -199,6 +256,57 @@ class PermissionsPage(StepPage):
 
     def on_enter(self) -> None:
         self.refresh()
+        if self.auto_screen and not self._screen_attempted:
+            self._screen_attempted = True
+            QTimer.singleShot(400, self.capture_screen)
+
+    def capture_screen(self) -> None:
+        if self._screen_worker is not None and self._screen_worker.isRunning():
+            return
+        self.screen_button.setEnabled(False)
+        self.screen_note.setText("REQUESTING SCREEN ACCESS…")
+        worker = _ScreenCheckWorker(self)
+        worker.done.connect(self._on_screen_done)
+        worker.failed.connect(self._on_screen_failed)
+        self._screen_worker = worker
+        worker.start()
+
+    def _on_screen_done(self, image: object) -> None:
+        self.screen_button.setEnabled(True)
+        try:
+            frame = np.asarray(image)
+            if frame.ndim != 3 or frame.size == 0:
+                raise ValueError("empty screenshot")
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width, channels = rgb.shape
+            qimage = QImage(
+                rgb.data,
+                width,
+                height,
+                channels * width,
+                QImage.Format.Format_RGB888,
+            ).copy()
+            pixmap = QPixmap.fromImage(qimage).scaled(
+                520,
+                160,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            self.screen_preview.setPixmap(pixmap)
+            self.screen_preview.setText("")
+            self.screen_note.setText(f"CAPTURED · {width}×{height} · NOT SAVED")
+        except Exception as exc:
+            self._on_screen_failed(str(exc))
+
+    def _on_screen_failed(self, message: str) -> None:
+        self.screen_button.setEnabled(True)
+        self.screen_preview.setPixmap(QPixmap())
+        self.screen_preview.setText("No screenshot available.")
+        self.screen_note.setText(f"SCREEN ACCESS FAILED · {message}")
+
+    def close_worker(self) -> None:
+        if self._screen_worker is not None and self._screen_worker.isRunning():
+            self._screen_worker.wait(3000)
 
     def refresh(self) -> None:
         while self.rows.count():
@@ -912,7 +1020,9 @@ class OnboardingWindow(QDialog):
         self.stack = QStackedWidget()
         self.pages: dict[OnboardingStep, StepPage] = {
             OnboardingStep.WELCOME: WelcomePage(),
-            OnboardingStep.PERMISSIONS: PermissionsPage(report_provider),
+            OnboardingStep.PERMISSIONS: PermissionsPage(
+                report_provider, auto_screen=enable_previews
+            ),
             OnboardingStep.CAMERAS: CamerasPage(
                 self.config, self.paths, enable_previews=enable_previews
             ),

@@ -348,3 +348,18 @@ def test_onboarding_stt_page_reports_mic_and_transcript(qapp, tmp_path) -> None:
         assert AppConfig.load(paths.settings_path).audio_device == 42
     finally:
         page.close_worker()
+
+
+def test_permissions_page_renders_a_test_screenshot(qapp) -> None:
+    import numpy as np
+    from keyboard_killer.ui.onboarding.steps import PermissionsPage
+
+    page = PermissionsPage(auto_screen=False)
+    try:
+        page._on_screen_done(np.zeros((100, 200, 3), dtype=np.uint8))
+        assert "CAPTURED" in page.screen_note.text()
+        assert "200×100" in page.screen_note.text()
+        assert page.screen_preview.pixmap() is not None
+        assert not page.screen_preview.pixmap().isNull()
+    finally:
+        page.close_worker()
