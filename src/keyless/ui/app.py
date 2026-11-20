@@ -7,8 +7,8 @@ import subprocess
 import sys
 from collections.abc import Callable
 
-from PySide6.QtCore import QThread, Qt, QTimer, Signal
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtCore import QThread, QUrl, Qt, QTimer, Signal
+from PySide6.QtGui import QCloseEvent, QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -36,7 +36,13 @@ from keyless.ui.history.window import HistoryPanel
 from keyless.ui.onboarding.flow import OnboardingFlow
 from keyless.ui.onboarding.steps import OnboardingWidget, OnboardingWindow
 from keyless.ui.screen_cursor import ScreenCursor
-from keyless.ui.session import DaemonController, NullController, SessionController, SessionState
+from keyless.ui.session import (
+    DaemonController,
+    NullController,
+    SessionController,
+    SessionState,
+    inspect_daemon_error,
+)
 from keyless.ui.settings.window import SettingsPanel
 from keyless.ui.theme.tokens import ThemeName, load_bundled_fonts, stylesheet, tokens_for
 from keyless.ui.transcript_overlay import TranscriptOverlayController
@@ -115,6 +121,8 @@ class HomePanel(QWidget):
 
         self.headline = QLabel("Ready to listen.")
         self.headline.setObjectName("Display")
+        self.headline.setWordWrap(True)
+        self.headline.setMaximumWidth(520)
         left.addWidget(self.headline)
 
         self.detail = QLabel("Look anywhere on your screens and speak to click, scroll, or type.")
@@ -122,6 +130,25 @@ class HomePanel(QWidget):
         self.detail.setWordWrap(True)
         self.detail.setMaximumWidth(520)
         left.addWidget(self.detail)
+
+        # User-centric error bar (hidden unless daemon/setup hits an error)
+        self.error_actions = QWidget()
+        err_row = QHBoxLayout(self.error_actions)
+        err_row.setContentsMargins(0, 0, 0, 0)
+        err_row.setSpacing(8)
+        self.view_error_btn = QPushButton("View error log")
+        self.view_error_btn.clicked.connect(window.open_error_diagnostics)
+        err_row.addWidget(self.view_error_btn)
+        self.copy_error_btn = QPushButton("Copy error")
+        self.copy_error_btn.clicked.connect(self._copy_error)
+        err_row.addWidget(self.copy_error_btn)
+        self.open_logs_btn = QPushButton("Open logs folder")
+        self.open_logs_btn.setObjectName("Ghost")
+        self.open_logs_btn.clicked.connect(window.open_logs_folder)
+        err_row.addWidget(self.open_logs_btn)
+        err_row.addStretch(1)
+        self.error_actions.setVisible(False)
+        left.addWidget(self.error_actions)
 
         actions = QHBoxLayout()
         actions.setSpacing(10)
@@ -248,11 +275,15 @@ class HomePanel(QWidget):
             self.detail.setText("Camera and microphone are off.")
             self.primary.setText("Resume")
         elif status.state is SessionState.ERROR:
+            rep = getattr(self.window.controller, "failure_report", None)
             self.state_label.setText("Needs attention")
-            self.headline.setText("Needs attention.")
-            self.detail.setText(status.detail or "Open Settings → Diagnostics for details.")
+            self.headline.setText((rep.summary + ".") if rep else "Needs attention.")
+            self.detail.setText(rep.hint if rep else (status.detail or "Open Settings → Diagnostics for details."))
             self.primary.setText("Try again")
+            self.copy_error_btn.setText("Copy error")
+            self.error_actions.setVisible(True)
         else:
+            self.error_actions.setVisible(False)
             calibrated = self.window.paths.calibration_path.exists()
             self.state_label.setText("Ready" if calibrated else "Needs calibration")
             self.headline.setText("Ready." if calibrated else "Calibrate to start.")
@@ -262,6 +293,9 @@ class HomePanel(QWidget):
                 else "Run a quick calibration so eye tracking knows your screen."
             )
             self.primary.setText("Start listening")
+
+        if status.state is not SessionState.ERROR:
+            self.error_actions.setVisible(False)
 
         recent = self.window.history.recent(1)
         if recent:
@@ -395,11 +429,17 @@ class HomePanel(QWidget):
         self.window.screen_cursor.stop()
         self.window.transcript_overlay.stop()
 
+    def _copy_error(self) -> None:
+        self.window.copy_latest_error()
+        self.copy_error_btn.setText("Copied ✓")
+        QTimer.singleShot(1800, lambda: self.copy_error_btn.setText("Copy error"))
+
     def toggle(self) -> None:
         status = self.window.controller.status
         if status.state is SessionState.LISTENING:
             self.window.controller.pause()
         else:
+            self.window.stop_calibration()
             self.window.controller.start()
         self._last_state = None
         self.poll_state()
@@ -439,6 +479,7 @@ class MainWindow(QMainWindow):
         self._calib_proc: subprocess.Popen[bytes] | None = None
         self._update_worker: _UpdateWorker | None = None
         self._updater = None
+        self._instance_server = None
         self._display_layout = None
         self._shutdown = False
 
@@ -752,6 +793,42 @@ class MainWindow(QMainWindow):
             status = self.controller.status
             self.tray.set_state(status.state, status.detail)
 
+    def present_window(self) -> None:
+        """Bring the existing window forward (used by tray & single-instance activation)."""
+        self.showNormal()
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def copy_latest_error(self) -> str:
+        rep = getattr(self.controller, "failure_report", None)
+        if rep is None:
+            rep = inspect_daemon_error(self.paths.logs_dir / "daemon.log", 1)
+        text = rep.formatted_clipboard_text()
+        QGuiApplication.clipboard().setText(text)
+        return text
+
+    def open_logs_folder(self) -> None:
+        self.paths.logs_dir.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.paths.logs_dir)))
+
+    def open_error_diagnostics(self) -> None:
+        self.show_page("Settings")
+        self.settings.expand_error_details()
+
+    def stop_calibration(self) -> None:
+        """Terminate an in-flight calibration overlay so the camera device is freed."""
+        self._calib_timer.stop()
+        proc = self._calib_proc
+        self._calib_proc = None
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=1.0)
+
     def shutdown(self) -> None:
         if self._shutdown:
             return
@@ -759,6 +836,7 @@ class MainWindow(QMainWindow):
         self._status_timer.stop()
         self._calib_timer.stop()
         self._update_poll_timer.stop()
+        self.stop_calibration()
         if self._update_worker is not None and self._update_worker.isRunning():
             self._update_worker.wait(2000)
         if self._inline_setup is not None:
@@ -766,6 +844,9 @@ class MainWindow(QMainWindow):
         self.settings.stop()
         self.home.shutdown()
         self.transcript_overlay.stop()
+        if self._instance_server is not None:
+            self._instance_server.close()
+            self._instance_server = None
         self.controller.quit()
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
@@ -785,9 +866,14 @@ def run_ui(
     controller: SessionController | None = None,
     enable_previews: bool = True,
 ) -> int:
+    from keyless.ui.instance_lock import SingleInstanceServer, try_activate_existing
     from keyless.ui.overlay.linux import create_overlay
     from keyless.ui.theme.tokens import system_theme_name
     from keyless.ui.tray import Tray
+
+    resolved_paths = paths or current_paths()
+    if controller is None and try_activate_existing(resolved_paths):
+        return 0
 
     app = QApplication.instance() or QApplication([])
     load_bundled_fonts()
@@ -796,16 +882,24 @@ def run_ui(
     app.setWindowIcon(make_icon())
     resolved_theme = theme or system_theme_name(app)
     window = MainWindow(
-        paths=paths,
+        paths=resolved_paths,
         config=config,
-        controller=controller or DaemonController(paths=paths),
+        controller=controller or DaemonController(paths=resolved_paths),
         theme=resolved_theme,
         enable_previews=enable_previews,
     )
+    if controller is None:
+        server = SingleInstanceServer(resolved_paths, parent=window)
+        try:
+            if server.start():
+                server.activate_requested.connect(window.present_window)
+                window._instance_server = server
+        except OSError:
+            pass
     app.aboutToQuit.connect(window.shutdown)
     tray = Tray(
         window=window,
-        on_open=window.show,
+        on_open=window.present_window,
         on_pause=window.home.toggle,
         on_quit=app.quit,
         on_calibrate=window.launch_calibration,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from collections import deque
@@ -10,8 +11,10 @@ from dataclasses import dataclass
 import numpy as np
 
 from keyless.vision.landmarks import CameraObservation, FaceFeatureExtractor
-from keyless.platform.linux.pipewire import open_pipewire_capture
+from keyless.platform.linux.pipewire import open_pipewire_capture, pipewire_available
 from keyless.platform.linux.v4l2 import CameraLockReport, open_locked_capture
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -56,14 +59,27 @@ class _CameraReaderThread:
         if capture_backend == "pipewire":
             self.cap, self.report = open_pipewire_capture(by_id_path)
         else:
-            self.cap, self.report = open_locked_capture(
-                by_id_path=by_id_path,
-                width=width,
-                height=height,
-                fps=fps,
-                exposure_absolute=exposure_absolute,
-                gain=gain,
-            )
+            try:
+                self.cap, self.report = open_locked_capture(
+                    by_id_path=by_id_path,
+                    width=width,
+                    height=height,
+                    fps=fps,
+                    exposure_absolute=exposure_absolute,
+                    gain=gain,
+                )
+            except Exception as exc:
+                if pipewire_available():
+                    logger.warning(
+                        "Exclusive V4L2 camera open failed (%s); falling back to shared PipeWire capture.",
+                        exc,
+                    )
+                    self.cap, self.report = open_pipewire_capture(by_id_path)
+                else:
+                    raise RuntimeError(
+                        f"Camera is unavailable or busy in another app ({exc}). "
+                        "Close the other app or enable 'Share camera' in Settings."
+                    ) from exc
         self._extract_landmarks = extract_landmarks
         self._use_gpu = use_gpu
         self._keep_images = keep_images

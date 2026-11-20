@@ -27,7 +27,7 @@ def _window(tmp_path):
     )
 
 
-def test_main_window_gaze_field_switches_between_demo_and_live(qapp, tmp_path) -> None:
+def test_main_window_gaze_field_switches_between_idle_and_live(qapp, tmp_path) -> None:
     window = _window(tmp_path)
 
     class Source:
@@ -52,7 +52,7 @@ def test_main_window_gaze_field_switches_between_demo_and_live(qapp, tmp_path) -
             GazeSample(x=120.0, y=80.0, face=True, blinking=False, age_s=2.0, seq=2)
         )
         field._tick()
-        assert field.mode == "demo"
+        assert field.mode == "idle"
     finally:
         window.shutdown()
         window.close()

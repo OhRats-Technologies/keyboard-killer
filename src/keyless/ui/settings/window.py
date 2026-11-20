@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QThread, Qt, Signal
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import QThread, QTimer, QUrl, Qt, Signal
+from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -53,7 +54,7 @@ from keyless.ui.components import (
 )
 from keyless.voice.stt.factory import stt_report
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 
 class MicCheckWorker(QThread):
@@ -112,6 +113,39 @@ class _ModelDownloadWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class _ContainedScrollArea(QScrollArea):
+    """Scroll area that strictly caps child content width to the visible viewport."""
+
+    def _sync_child_width(self) -> None:
+        widget = self.widget()
+        if widget is not None:
+            vw = max(240, self.viewport().width())
+            widget.setMaximumWidth(vw)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._sync_child_width()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._sync_child_width()
+
+
+def _compact_combo(combo: QComboBox) -> QComboBox:
+    combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+    combo.setMinimumContentsLength(10)
+    combo.setMinimumWidth(0)
+    combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    return combo
+
+
+def _wrap_label(label: QLabel) -> QLabel:
+    label.setWordWrap(True)
+    label.setMinimumWidth(0)
+    label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    return label
+
+
 class SettingsPanel(QWidget):
     """Instant-apply Settings: Voice, Camera & Gaze, Optional AI, and collapsible Diagnostics."""
 
@@ -144,14 +178,16 @@ class SettingsPanel(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
 
-        scroll = QScrollArea()
+        scroll = _ContainedScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         content = QWidget()
+        content.setMinimumWidth(0)
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(0, 0, 8, 16)
+        layout.setContentsMargins(0, 0, 12, 16)
         layout.setSpacing(16)
         scroll.setWidget(content)
+        self.scroll = scroll
         root.addWidget(scroll)
 
         title = QLabel("Settings")
@@ -165,24 +201,24 @@ class SettingsPanel(QWidget):
         vform.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         vform.setVerticalSpacing(10)
 
-        self.microphone = QComboBox()
-        self.microphone.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.microphone = _compact_combo(QComboBox())
         self._populate_microphones()
         self.microphone.currentIndexChanged.connect(self._auto_save)
-        mic_row = QHBoxLayout()
-        mic_row.setSpacing(8)
-        mic_row.addWidget(self.microphone, 1)
+        vform.addRow("Microphone", self.microphone)
+
+        mic_actions = QHBoxLayout()
+        mic_actions.setSpacing(8)
         self.mic_test = QPushButton("Check mic")
         self.mic_test.clicked.connect(self.check_mic)
-        mic_row.addWidget(self.mic_test)
+        mic_actions.addWidget(self.mic_test)
         self.speech_test = QPushButton("Test speech")
         self.speech_test.clicked.connect(self.test_speech)
-        mic_row.addWidget(self.speech_test)
-        vform.addRow("Microphone", mic_row)
+        mic_actions.addWidget(self.speech_test)
+        mic_actions.addStretch(1)
+        vform.addRow("", mic_actions)
 
-        self.mic_result = QLabel("")
+        self.mic_result = _wrap_label(QLabel(""))
         self.mic_result.setObjectName("Muted")
-        self.mic_result.setWordWrap(True)
         self.mic_result.setVisible(False)
         vform.addRow("", self.mic_result)
 
@@ -210,7 +246,8 @@ class SettingsPanel(QWidget):
         voice_card.layout.addWidget(divider())
 
         stt_row = QHBoxLayout()
-        self.stt_status = QLabel("")
+        stt_row.setSpacing(10)
+        self.stt_status = _wrap_label(QLabel(""))
         self.stt_status.setObjectName("Muted")
         stt_row.addWidget(self.stt_status, 1)
         self.dl_button = QPushButton("Download speech model (630 MB)")
@@ -232,26 +269,30 @@ class SettingsPanel(QWidget):
         self.tts_enabled.toggled.connect(self._auto_save)
         voice_card.layout.addWidget(self.tts_enabled)
 
-        tts_row = QHBoxLayout()
-        tts_row.setSpacing(8)
-        self.tts_voice = QComboBox()
-        self.tts_voice.addItem("Voice: Juno (Underdog Woof)", "juno")
-        self.tts_voice.addItem("Voice: Mira (Underdog Woof)", "mira")
+        tts_form = QFormLayout()
+        tts_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        tts_form.setVerticalSpacing(8)
+        self.tts_voice = _compact_combo(QComboBox())
+        self.tts_voice.addItem("Juno (Underdog Woof)", "juno")
+        self.tts_voice.addItem("Mira (Underdog Woof)", "mira")
         v_idx = self.tts_voice.findData(getattr(self.config, "tts_voice", "juno"))
         self.tts_voice.setCurrentIndex(v_idx if v_idx >= 0 else 0)
         self.tts_voice.currentIndexChanged.connect(self._auto_save)
-        tts_row.addWidget(self.tts_voice, 1)
+        tts_form.addRow("Assistant voice", self.tts_voice)
 
+        tts_actions = QHBoxLayout()
+        tts_actions.setSpacing(8)
         self.tts_preview_btn = QPushButton("Test voice")
         self.tts_preview_btn.clicked.connect(self._preview_tts)
-        tts_row.addWidget(self.tts_preview_btn)
-
+        tts_actions.addWidget(self.tts_preview_btn)
         self.tts_dl_button = QPushButton("Download voice (40 MB)")
         self.tts_dl_button.clicked.connect(self._download_tts_model)
-        tts_row.addWidget(self.tts_dl_button)
-        voice_card.layout.addLayout(tts_row)
+        tts_actions.addWidget(self.tts_dl_button)
+        tts_actions.addStretch(1)
+        tts_form.addRow("", tts_actions)
+        voice_card.layout.addLayout(tts_form)
 
-        self.tts_status = QLabel("Voice by Underdog Woof · non-commercial license")
+        self.tts_status = _wrap_label(QLabel("Voice by Underdog Woof · non-commercial license"))
         self.tts_status.setObjectName("Muted")
         voice_card.layout.addWidget(self.tts_status)
         layout.addWidget(voice_card)
@@ -264,7 +305,7 @@ class SettingsPanel(QWidget):
         gform.setVerticalSpacing(10)
 
         self.cam_mode_label = QLabel("Camera setup")
-        self.cam_mode = QComboBox()
+        self.cam_mode = _compact_combo(QComboBox())
         self.cam_mode.addItem("Automatic", "auto")
         self.cam_mode.addItem("One camera", "mono")
         self.cam_mode.addItem("Two cameras (stereo)", "stereo")
@@ -273,14 +314,12 @@ class SettingsPanel(QWidget):
         self.cam_mode.currentIndexChanged.connect(self._on_camera_setting_changed)
         gform.addRow(self.cam_mode_label, self.cam_mode)
 
-        self.cam1 = QComboBox()
-        self.cam1.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.cam1 = _compact_combo(QComboBox())
         self.cam1.currentIndexChanged.connect(self._auto_save)
         gform.addRow("Camera", self.cam1)
 
         self.cam2_label = QLabel("Second camera")
-        self.cam2 = QComboBox()
-        self.cam2.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.cam2 = _compact_combo(QComboBox())
         self.cam2.currentIndexChanged.connect(self._auto_save)
         gform.addRow(self.cam2_label, self.cam2)
 
@@ -304,7 +343,7 @@ class SettingsPanel(QWidget):
         gaze_card.layout.addLayout(gform)
 
         calib_row = QHBoxLayout()
-        self.calib_status = QLabel("")
+        self.calib_status = _wrap_label(QLabel(""))
         self.calib_status.setObjectName("Muted")
         calib_row.addWidget(self.calib_status, 1)
         self.calibrate_button = QPushButton("Calibrate")
@@ -320,7 +359,7 @@ class SettingsPanel(QWidget):
         aform.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         aform.setVerticalSpacing(10)
 
-        self.provider_kind = QComboBox()
+        self.provider_kind = _compact_combo(QComboBox())
         self.provider_kind.addItem("Automatic", "auto")
         self.provider_kind.addItem("API provider", "openai_compat")
         self.provider_kind.addItem("Local ACP agent", "acp")
@@ -330,7 +369,7 @@ class SettingsPanel(QWidget):
         aform.addRow("Backend", self.provider_kind)
 
         self.provider_preset_label = QLabel("Provider")
-        self.provider_preset = QComboBox()
+        self.provider_preset = _compact_combo(QComboBox())
         for preset in load_presets():
             self.provider_preset.addItem(preset.name, preset.id)
         index = self.provider_preset.findData(self.config.llm_preset)
@@ -372,7 +411,7 @@ class SettingsPanel(QWidget):
         self.vlm_consent.toggled.connect(self._auto_save)
         aform.addRow("", self.vlm_consent)
 
-        self.ai_note = QLabel("")
+        self.ai_note = _wrap_label(QLabel(""))
         self.ai_note.setObjectName("Muted")
         self.ai_note.setVisible(False)
         aform.addRow("", self.ai_note)
@@ -382,7 +421,7 @@ class SettingsPanel(QWidget):
 
         # ------------------------------------------------------------------ Collapsible Diagnostics & About
         self.diagnostics = DisclosureSection(
-            "Diagnostics & about", on_expand=self.refresh_diagnostics
+            "Diagnostics and about", on_expand=self.refresh_diagnostics
         )
         diag_card = Card(subtle=True)
         self._diag_grid = QGridLayout()
@@ -406,20 +445,40 @@ class SettingsPanel(QWidget):
         self._diag_grid.setColumnStretch(1, 1)
         diag_card.layout.addLayout(self._diag_grid)
 
+        self.error_summary_label = _wrap_label(QLabel(""))
+        self.error_summary_label.setObjectName("Warning")
+        self.error_summary_label.setVisible(False)
+        diag_card.layout.addWidget(self.error_summary_label)
+
         self.diag_text = QTextEdit()
         self.diag_text.setReadOnly(True)
-        self.diag_text.setFixedHeight(170)
+        self.diag_text.setFixedHeight(190)
         diag_card.layout.addWidget(self.diag_text)
 
+        log_actions = QHBoxLayout()
+        log_actions.setSpacing(8)
+        self.copy_error_btn = QPushButton("Copy error")
+        self.copy_error_btn.clicked.connect(self._copy_error)
+        log_actions.addWidget(self.copy_error_btn)
+        open_log = QPushButton("Open log file")
+        open_log.clicked.connect(self._open_log_file)
+        log_actions.addWidget(open_log)
+        open_folder = QPushButton("Open logs folder")
+        open_folder.clicked.connect(self._open_logs_folder)
+        log_actions.addWidget(open_folder)
+        log_actions.addStretch(1)
+        diag_card.layout.addLayout(log_actions)
+
         diag_actions = QHBoxLayout()
-        copy_diag = QPushButton("Copy report")
+        diag_actions.setSpacing(8)
+        copy_diag = QPushButton("Copy full report")
         copy_diag.clicked.connect(lambda: QGuiApplication.clipboard().setText(self.diag_text.toPlainText()))
         diag_actions.addWidget(copy_diag)
         rerun = QPushButton("Run setup again")
         rerun.clicked.connect(self._trigger_setup)
         diag_actions.addWidget(rerun)
         diag_actions.addStretch(1)
-        about = QLabel(f"Keyless {VERSION} · Local camera & speech")
+        about = QLabel(f"Keyless {VERSION}")
         about.setObjectName("Muted")
         diag_actions.addWidget(about)
         diag_card.layout.addLayout(diag_actions)
@@ -441,9 +500,8 @@ class SettingsPanel(QWidget):
         upd_row.addWidget(self.update_now_btn)
         diag_card.layout.addLayout(upd_row)
 
-        self.update_status = QLabel("")
+        self.update_status = _wrap_label(QLabel(""))
         self.update_status.setObjectName("Muted")
-        self.update_status.setWordWrap(True)
         self.update_status.setVisible(False)
         diag_card.layout.addWidget(self.update_status)
 
@@ -753,7 +811,41 @@ class SettingsPanel(QWidget):
 
     # ------------------------------------------------------------------ Diagnostics
 
+    def _copy_error(self) -> None:
+        from keyless.ui.session import inspect_daemon_error
+
+        rep = inspect_daemon_error(self.paths.logs_dir / "daemon.log", 1)
+        QGuiApplication.clipboard().setText(rep.formatted_clipboard_text())
+
+    def _open_log_file(self) -> None:
+        self.paths.logs_dir.mkdir(parents=True, exist_ok=True)
+        log_file = self.paths.logs_dir / "daemon.log"
+        if not log_file.exists():
+            log_file.touch()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(log_file)))
+
+    def _open_logs_folder(self) -> None:
+        self.paths.logs_dir.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.paths.logs_dir)))
+
+    def expand_error_details(self) -> None:
+        """Open the Diagnostics section, load latest daemon log, and scroll to it."""
+        if not self.diagnostics.toggle_button.isChecked():
+            self.diagnostics.toggle_button.setChecked(True)
+        else:
+            self.refresh_diagnostics()
+        self.scroll.ensureWidgetVisible(self.diagnostics)
+        QTimer.singleShot(
+            0,
+            lambda: self.scroll.verticalScrollBar().setValue(
+                self.scroll.verticalScrollBar().maximum()
+            ),
+        )
+
     def refresh_diagnostics(self) -> None:
+        from keyless.ui.session import inspect_daemon_error
+
+        sections: list[str] = []
         try:
             report = collect_doctor(check_providers=False)
             caps = report.capabilities.get("capabilities", {})
@@ -771,9 +863,23 @@ class SettingsPanel(QWidget):
                 lbl.setObjectName("Success" if ok is True else "Warning" if ok is False else "Muted")
                 lbl.style().unpolish(lbl)
                 lbl.style().polish(lbl)
-            self.diag_text.setPlainText(format_text(report))
+            sections.append(format_text(report))
         except Exception as exc:
-            self.diag_text.setPlainText(f"Diagnostics unavailable: {exc}")
+            sections.append(f"Diagnostics unavailable: {exc}")
+
+        log_path = self.paths.logs_dir / "daemon.log"
+        if log_path.exists():
+            rep = inspect_daemon_error(log_path, 1)
+            if rep.log_excerpt:
+                self.error_summary_label.setText(f"{rep.summary} — {rep.hint}")
+                self.error_summary_label.setVisible(True)
+                sections.append(f"--- Recent Daemon Log ({log_path}) ---\n{rep.log_excerpt}")
+            else:
+                self.error_summary_label.setVisible(False)
+        else:
+            self.error_summary_label.setVisible(False)
+
+        self.diag_text.setPlainText("\n\n".join(sections))
 
     # ------------------------------------------------------------------ Persistence
 

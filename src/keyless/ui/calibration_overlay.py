@@ -181,8 +181,6 @@ class CalibrationOverlayWindow(QWidget):
 
         # Transparent, stays on top of the active monitor without replacing it.
         flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint
-        if os.environ.get("QT_QPA_PLATFORM") != "offscreen":
-            flags |= Qt.WindowType.Tool
         self.setWindowFlags(flags)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)

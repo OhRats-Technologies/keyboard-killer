@@ -105,8 +105,8 @@ echo "Installed Keyless -> ${BIN_DIR}/keyless"
 echo "Desktop entry -> ${DESKTOP_DIR}/keyless.desktop"
 
 if [ "$OPEN_AFTER" -eq 1 ]; then
-  pkill -f "python.*keyless\.main" 2>/dev/null || true
-  sleep 0.3
+  pkill -f "keyless\.(main|ui)" 2>/dev/null || true
+  sleep 0.4
   nohup "${BIN_DIR}/keyless" ui >/tmp/keyless-ui.log 2>&1 &
   echo "Launched Keyless UI (PID $!)"
 fi

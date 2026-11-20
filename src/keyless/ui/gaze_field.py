@@ -10,7 +10,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from keyless.ui.cursor_motion import GazeMotion, MotionSettings
-from keyless.ui.gaze_art import demo_gaze, draw_gaze_cursor
+from keyless.ui.gaze_art import draw_gaze_cursor
 from keyless.ui.gaze_region import GazeRegion, calibration_region
 from keyless.ui.gaze_source import GazeSample, LiveGaze
 
@@ -65,7 +65,7 @@ class GazeField(QWidget):
         self._trail: deque[QPointF] = deque(maxlen=TRAIL_POINTS)
         self._started = time.monotonic()
         self._last_sample: GazeSample | None = None
-        self._mode = "demo"
+        self._mode = "idle"
         self._frame = 0
         self.setMinimumSize(300, 150)
         self.setSizePolicy(
@@ -117,12 +117,8 @@ class GazeField(QWidget):
             else:
                 target = self._field_point(screen, sample.x, sample.y)
         else:
-            mode = "demo"
-            nx, ny = demo_gaze(now - self._started)
-            target = QPointF(
-                live_rect.x() + nx * live_rect.width(),
-                live_rect.y() + ny * live_rect.height(),
-            )
+            mode = "idle"
+            target = screen.center()
 
         if mode != self._mode:
             self._mode = mode
@@ -130,7 +126,7 @@ class GazeField(QWidget):
             self._trail.clear()
             self.mode_changed.emit(mode)
 
-        if mode == "demo":
+        if mode == "idle":
             self._point = target
         else:
             mx, my, _ = self._motion.update(
@@ -141,7 +137,7 @@ class GazeField(QWidget):
                 blinking=sample.blinking,
             )
             self._point = QPointF(mx, my)
-        self._trail.append(self._point)
+            self._trail.append(self._point)
         self.update()
 
     def _screen_rect(self) -> QRectF:
@@ -191,7 +187,7 @@ class GazeField(QWidget):
             painter.drawRoundedRect(rect, 6.0, 6.0)
 
         point, mode = self._point, self._mode
-        if mode != "demo":
+        if mode != "idle":
             if len(self._trail) > 1:
                 for index in range(1, len(self._trail)):
                     alpha = int(75 * index / len(self._trail))
@@ -201,7 +197,7 @@ class GazeField(QWidget):
                     painter.drawLine(self._trail[index - 1], self._trail[index])
             draw_gaze_cursor(painter, point, scale=0.45)
         else:
-            # Calm resting state when engine is stopped or paused (no jumping screensaver dot).
+            # Calm resting state when engine is stopped or paused.
             center = screen.center()
             ring = QColor(tokens.muted)
             ring.setAlpha(90)
@@ -218,8 +214,8 @@ class GazeField(QWidget):
         badge_text = {
             "live": "● Live",
             "no-face": "No face in view",
-            "demo": "Idle",
-        }[mode]
+            "idle": "Idle",
+        }.get(mode, "Idle")
         painter.drawText(
             QRectF(12, 6, self.width() - 24, 18),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,

@@ -98,7 +98,7 @@ UNDERDOG_WOOF = ModelAsset(
         ModelFile(
             name="LICENSE",
             bytes=7612,
-            sha256="2377052f004d3c8cf44e1984d1583c17936781f9e697253e048b991ff09f5e6b",
+            sha256="784c4a353d15f370ff387f74bde64f50a2041df9c6f2338c3d8a2f781b944de5",
         ),
         ModelFile(
             name="NOTICE",

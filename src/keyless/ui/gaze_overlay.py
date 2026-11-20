@@ -22,12 +22,11 @@ from PySide6.QtWidgets import QApplication, QWidget
 
 from keyless.platform.linux.display import get_display_layout
 from keyless.ui.cursor_motion import GazeMotion, MotionSettings
-from keyless.ui.gaze_art import cursor_bounds, demo_gaze, draw_gaze_cursor
+from keyless.ui.gaze_art import cursor_bounds, draw_gaze_cursor
 from keyless.ui.gaze_region import GazeRegion, full_region
 from keyless.ui.gaze_source import LiveGaze
 
 TICK_MS = 16
-DEMO_LABEL = "DEMO"
 NO_FACE_LABEL = "NO FACE"
 CURSOR_SCALE = 1.0
 
@@ -46,7 +45,7 @@ def _alive(pid: int) -> bool:
 
 @dataclass(frozen=True)
 class CursorFrame:
-    point: QPointF
+    point: QPointF | None
     mode: str
     blinking: bool
     label: str = ""
@@ -93,65 +92,49 @@ class CursorEngine:
             region.y + ny * region.height,
         )
 
-    def _demo_point(self, elapsed: float) -> QPointF:
-        region = self.live_region
-        nx, ny = demo_gaze(elapsed)
-        return QPointF(
-            region.x + nx * region.width,
-            region.y + ny * region.height,
-        )
-
     @staticmethod
     def label_for(mode: str) -> str:
-        if mode == "demo":
-            return DEMO_LABEL
         if mode == "no-face":
             return NO_FACE_LABEL
         return ""
 
     def frame(self, now: float | None = None) -> CursorFrame:
-        """Return one shared frame; extra overlay timers reuse the same update."""
+        """Return one shared frame; only renders when live face gaze is available."""
         stamp = time.monotonic() if now is None else now
         if self._last_frame is not None and stamp - self._last_tick < 0.008:
             return self._last_frame
         dt = stamp - self._last_tick if self._last_tick > 0.0 else 1.0 / 60.0
         self._last_tick = stamp
 
-        sample = None
-        if not self.demo_only:
-            sample = self._gaze.read()
-        if sample is not None and sample.live:
+        sample = None if self.demo_only else self._gaze.read()
+        if sample is not None and sample.live and sample.face:
             target = self._live_point(sample.x, sample.y)
-            mode = "live" if sample.face else "no-face"
-            active = sample.face
+            mode = "live"
+            active = True
             blinking = sample.blinking
         else:
-            target = self._demo_point(stamp - self._started)
-            mode = "demo"
-            active = False
-            blinking = False
+            self._mode = "hidden"
+            self._last_frame = CursorFrame(point=None, mode="hidden", blinking=False, label="")
+            return self._last_frame
 
         if mode != self._mode:
             self._motion.reset(target.x(), target.y(), stamp)
             self._mode = mode
 
-        if mode == "demo":
-            point = target
-        else:
-            mx, my, _ = self._motion.update(
-                target.x(),
-                target.y(),
-                dt,
-                active=active,
-                blinking=blinking,
-            )
-            point = QPointF(mx, my)
+        mx, my, _ = self._motion.update(
+            target.x(),
+            target.y(),
+            dt,
+            active=active,
+            blinking=blinking,
+        )
+        point = QPointF(mx, my)
 
         self._last_frame = CursorFrame(
             point=point,
             mode=mode,
             blinking=blinking,
-            label=self.label_for(mode),
+            label="",
         )
         return self._last_frame
 
@@ -197,6 +180,12 @@ class CursorOverlay(QWidget):
 
     def _tick(self) -> None:
         frame = self.engine.frame()
+        if frame.point is None:
+            if self._last_point is not None:
+                self.update(self._cursor_rect(self._last_point, self._label))
+                self._last_point = None
+                self._label = ""
+            return
         local = frame.point - QPointF(self.window_geometry.topLeft())
         inside = (
             0 <= local.x() <= self.width()

@@ -366,3 +366,68 @@ def test_devices_page_reports_mic_and_transcript(qapp, tmp_path: Path) -> None:
         assert AppConfig.load(paths.settings_path).audio_device == 42
     finally:
         page.close_resources()
+
+
+def test_settings_panel_never_overflows_viewport_at_minimum_width(qapp, tmp_path: Path, monkeypatch) -> None:
+    from PySide6.QtCore import QPoint
+    from keyless.audio.quick_test import InputDevice
+    from keyless.ui.app import MainWindow
+
+    monkeypatch.setattr(
+        "keyless.ui.settings.window.input_devices",
+        lambda: [InputDevice(1, "Very Long USB Studio Condenser Microphone With Hardware Monitoring Interface", 1)],
+    )
+    paths = _paths(tmp_path)
+    window = MainWindow(
+        paths=paths,
+        config=AppConfig(),
+        controller=NullController(),
+        theme=ThemeName.DARK,
+        enable_previews=False,
+    )
+    try:
+        window.resize(820, 540)
+        window.show_page("Settings")
+        window.settings.tts_status.setText(
+            "Diagnostic status with a very long SHA-256 hex digest 784c4a353d15f370ff387f74bde64f50a2041df9c6f2338c3d8a2f781b944de5 that must wrap cleanly."
+        )
+        window.show()
+        qapp.processEvents()
+        content = window.settings.scroll.widget()
+        viewport = window.settings.scroll.viewport()
+        assert content is not None
+        assert content.width() <= viewport.width()
+        for btn in (
+            window.settings.mic_test,
+            window.settings.speech_test,
+            window.settings.dl_button,
+            window.settings.tts_preview_btn,
+            window.settings.calibrate_button,
+        ):
+            right_edge = btn.mapTo(viewport, QPoint(btn.width(), 0)).x()
+            assert right_edge <= viewport.width()
+    finally:
+        window.shutdown()
+        window.close()
+
+
+def test_overlay_cursor_hides_without_live_gaze_and_daemon_error_is_readable(tmp_path: Path) -> None:
+    from keyless.ui.gaze_overlay import CursorEngine
+    from keyless.ui.gaze_region import GazeRegion
+    from keyless.ui.session import _extract_daemon_error
+
+    engine = CursorEngine(live_region=GazeRegion(0, 0, 1920, 1080), demo_only=False)
+    try:
+        engine._gaze = SimpleNamespace(read=lambda: None, close=lambda: None)
+        frame = engine.frame(now=10.0)
+        assert frame.point is None
+        assert frame.mode == "hidden"
+        assert frame.label == ""
+    finally:
+        engine.close()
+
+    log = tmp_path / "daemon.log"
+    log.write_text("Traceback...\nRuntimeError: Failed to open V4L2 capture on /dev/video0\n")
+    msg = _extract_daemon_error(log, 1)
+    assert "Camera is currently in use" in msg
+    assert "/home/" not in msg
