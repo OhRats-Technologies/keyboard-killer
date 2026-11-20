@@ -9,11 +9,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from keyboard_killer.platform.base import DisplayLayout, MonitorInfo
-from keyboard_killer.platform.linux.display import _attach_edid_mm, read_drm_edid_mm
-from keyboard_killer.ui.gaze_region import calibration_region
-from keyboard_killer.vision.calibrator import load_gaze_model
-from keyboard_killer.vision.geo_gaze import (
+from keyless.platform.base import DisplayLayout, MonitorInfo
+from keyless.platform.linux.display import _attach_edid_mm, read_drm_edid_mm
+from keyless.ui.gaze_region import calibration_region
+from keyless.vision.calibrator import load_gaze_model
+from keyless.vision.geo_gaze import (
     ChaseDetector,
     Fixation,
     FixationSegmenter,

@@ -24,7 +24,7 @@
 
 ## 2. What to borrow from Hex
 
-| Hex pattern | Why it fits Keyboard-Killer |
+| Hex pattern | Why it fits Keyless |
 |---|---|
 | One shared window; per-OS hosts | The app needs one product identity while input/capture/permissions differ by OS. |
 | `Capabilities` decides which rows exist | Missing OS features should be omitted, not shown as disabled imitations. |
@@ -33,7 +33,7 @@
 | Onboarding as a story with a real practice | Teaches look/speak/click safely before the live desktop. |
 | Capsule overlay that never takes focus | The right shape for gaze/click feedback: small, state-specific, click-through, one action. |
 | Design-system rules (one accent, few actions, sentence case) | Keeps the layered UI coherent without inventing a new visual language. |
-| LLM features through an external service | Hex does not bundle an LLM; it reports when OpenCode is absent. Keyboard-Killer generalizes this: provider interface with OpenAI-compatible, Ollama, and ACP adapters. |
+| LLM features through an external service | Hex does not bundle an LLM; it reports when OpenCode is absent. Keyless generalizes this: provider interface with OpenAI-compatible, Ollama, and ACP adapters. |
 
 Do **not** borrow: Rune/GPUI, macOS-first assumptions, the dictation data model, or Hex's exact visual identity.
 
@@ -61,7 +61,7 @@ Dependency rule: **UI → App → Engine → Services → Platform**. Platform c
 The detailed tree and migration table are in [file-map.md](file-map.md). The shape:
 
 ```
-src/keyboard_killer/
+src/keyless/
   app/          CLI, daemon, lifecycle, single instance
   config/       schema, migrations, paths
   platform/     protocols + linux/ macos/ windows/
@@ -127,15 +127,15 @@ Use one `AppPaths` service with four roots:
 
 | Root | Linux | macOS | Windows |
 |---|---|---|---|
-| config | `~/.config/keyboard-killer` | `~/Library/Application Support/Keyboard-Killer` | `%APPDATA%\Keyboard-Killer` |
-| data | `~/.local/share/keyboard-killer` | `~/Library/Application Support/Keyboard-Killer` | `%LOCALAPPDATA%\Keyboard-Killer` |
-| cache | `~/.cache/keyboard-killer` | `~/Library/Caches/Keyboard-Killer` | `%LOCALAPPDATA%\Keyboard-Killer\cache` |
-| logs | `~/.local/state/keyboard-killer/logs` | `~/Library/Logs/Keyboard-Killer` | `%LOCALAPPDATA%\Keyboard-Killer\logs` |
+| config | `~/.config/keyless` | `~/Library/Application Support/Keyless` | `%APPDATA%\Keyless` |
+| data | `~/.local/share/keyless` | `~/Library/Application Support/Keyless` | `%LOCALAPPDATA%\Keyless` |
+| cache | `~/.cache/keyless` | `~/Library/Caches/Keyless` | `%LOCALAPPDATA%\Keyless\cache` |
+| logs | `~/.local/state/keyless/logs` | `~/Library/Logs/Keyless` | `%LOCALAPPDATA%\Keyless\logs` |
 
-- `KEYBOARD_KILLER_HOME` overrides all roots for tests and portable installs.
+- `KEYLESS_HOME` overrides all roots for tests and portable installs.
 - macOS uses one Application Support root for both config and data; Linux and Windows split them.
 - Provider-owned models stay in the provider's store; `models/providers.json` records status, not files.
-- Migrate the current `~/.config/keyboard-killer/config.json` and `stereo_calib.json` into the new layout once; never delete the old files.
+- Migrate the current `~/.config/keyless/config.json` and `stereo_calib.json` into the new layout once; never delete the old files.
 - Keep models in **data**, not cache: they are user assets that survive cache clearing.
 - Keep the MediaPipe landmarker in **cache**: it is re-downloadable. The Parakeet ONNX files are **data** with a verified receipt.
 - Windows: keep large models/logs in `LocalAppData`, not roaming `AppData`.
@@ -143,7 +143,7 @@ Use one `AppPaths` service with four roots:
 ### Shipped folders
 
 ```
-<data>/keyboard-killer/
+<data>/keyless/
   models/
     <asset-id>/
       <pinned files>
@@ -153,15 +153,15 @@ Use one `AppPaths` service with four roots:
     custom/
   history/
     actions.db
-<config>/keyboard-killer/
+<config>/keyless/
   settings.json
   onboarding.json
   calibration/
     <pair-id>-<monitor>.json
-<cache>/keyboard-killer/
+<cache>/keyless/
   face_landmarker.task
   downloads/
-<logs>/keyboard-killer/
+<logs>/keyless/
   app.jsonl
 ```
 
@@ -236,7 +236,7 @@ Keep behavior stable; extract seams before adding surfaces.
 
 | Step | Status | Evidence |
 |---|---|---|
-| 1. Paths and capabilities | **Done** | `config/paths.py`, `config/migrations.py`, `platform/base.py`, `platform/capabilities.py`; `KEYBOARD_KILLER_HOME`; migration copies and keeps legacy files |
+| 1. Paths and capabilities | **Done** | `config/paths.py`, `config/migrations.py`, `platform/base.py`, `platform/capabilities.py`; `KEYLESS_HOME`; migration copies and keeps legacy files |
 | 2. Linux behind protocols | **Done** | uinput, evdev, V4L2, AT-SPI, screen, Mutter layout under `platform/linux/`; CLI/daemon behavior preserved |
 | 3. Models, providers, diagnostics | **Done** | Parakeet + pinned downloader (Whisper removed in 0.1.1); provider adapters; replaced native Gemini; `doctor`/`--json` |
 | 4. UI shell | **Done for Linux** | main window, tray, onboarding, settings, history, theme, D3 Wayland fallback; headless tests and light/dark goldens |
@@ -261,7 +261,7 @@ Do not combine a file move with a behavior change in the same review; commits `9
 - **D1** PySide6 shell is implemented. The overlay remains per-OS; GNOME Wayland keeps the tray/toast fallback.
 - **D2** App-owned Parakeet/landmarks; bring-your-own text LLM and optional VLM (D9/D10).
 - **D3** X11 click-through pill; Wayland tray/toast fallback with an explicit capability reason.
-- **D4** Four roots and `KEYBOARD_KILLER_HOME` are implemented; one-time migration keeps old files.
+- **D4** Four roots and `KEYLESS_HOME` are implemented; one-time migration keeps old files.
 - **D5** Stable `/dev/v4l/by-id` identity and a camera picker exist; calibration is still one legacy file rather than `<pair>-<monitor>.json` (partial).
 - **D6** Screen permission is reported, but the first capture still triggers the desktop prompt rather than a preflight request (partial).
 - **D7** Linux `.deb`/AppImage are built; macOS/Windows signing and installers are not started.

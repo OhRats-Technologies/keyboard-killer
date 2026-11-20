@@ -35,7 +35,7 @@ function connectWebSocket() {
   socket = new WebSocket(WS_URL);
 
   socket.onopen = () => {
-    console.log("[Keyboard-Killer] Connected to local Python daemon at", WS_URL);
+    console.log("[Keyless] Connected to local Python daemon at", WS_URL);
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;

@@ -68,7 +68,7 @@ def _percentile(values: list[float], fraction: float) -> float:
 
 
 def run_engine(name: str, samples: list[dict[str, object]], config) -> dict[str, object]:
-    from keyboard_killer.voice.stt.factory import create_stt_engine
+    from keyless.voice.stt.factory import create_stt_engine
 
     selection = create_stt_engine(config)
     engine = selection.engine
@@ -132,7 +132,7 @@ def main() -> int:
     parser.add_argument("--label", default="")
     args = parser.parse_args()
 
-    from keyboard_killer.config import AppConfig
+    from keyless.config import AppConfig
 
     samples = json.loads(args.manifest.read_text())
     if not isinstance(samples, list) or not samples:

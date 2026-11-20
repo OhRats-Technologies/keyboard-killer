@@ -1,6 +1,6 @@
 # Releases
 
-Keyboard-Killer follows the same shape as OhRats RC: the tag is the release
+Keyless follows the same shape as OhRats RC: the tag is the release
 boundary, CI must be green on the tagged commit, and the assets are built from
 that exact commit.
 
@@ -24,7 +24,7 @@ before anything is published.
 4. Tag and push:
 
 ```sh
-git tag -a v0.1.2 -m "Keyboard-Killer 0.1.2"
+git tag -a v0.1.2 -m "Keyless 0.1.2"
 git push origin v0.1.2
 ```
 
@@ -32,11 +32,11 @@ git push origin v0.1.2
 
 - verifies the tag matches `pyproject.toml` and the commit is on `main`;
 - waits for a successful `CI` run on the tagged SHA;
-- builds `keyboard-killer_amd64.deb` and `keyboard-killer-x86_64.AppImage`
+- builds `keyless_amd64.deb` and `keyless-x86_64.AppImage`
   with `packaging/linux/build_deb.py --force-runtime --appimage`;
 - writes `SHA256SUMS` and copies `site/install.sh`;
-- mirrors the public assets to `/data/keyboard-killer-releases` on the
-  Coolify host (served at `https://keyboard-killer.ohrats.party/releases/`);
+- mirrors the public assets to `/data/keyless-releases` on the
+  Coolify host (served at `https://keyless.ohrats.party/releases/`);
 - creates the GitHub release as a draft, uploads the assets, and publishes it;
 - runs the public installer from the site mirror twice (fresh + idempotent).
 
@@ -46,36 +46,36 @@ The repository and release assets are public, so the primary download path is
 GitHub:
 
 ```
-https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download/keyboard-killer_amd64.deb
-https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download/keyboard-killer-x86_64.AppImage
-https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download/SHA256SUMS
+https://github.com/OhRats-Technologies/keyless/releases/latest/download/keyless_amd64.deb
+https://github.com/OhRats-Technologies/keyless/releases/latest/download/keyless-x86_64.AppImage
+https://github.com/OhRats-Technologies/keyless/releases/latest/download/SHA256SUMS
 ```
 
 The release workflow also mirrors the same files to
-`https://keyboard-killer.ohrats.party/releases/` as a fast CDN/fallback. The
-site container mounts `/data/keyboard-killer-releases` at
+`https://keyless.ohrats.party/releases/` as a fast CDN/fallback. The
+site container mounts `/data/keyless-releases` at
 `/usr/share/nginx/html/releases`. The mirror upload authenticates with the
 `COOLIFY_SSH_KEY` and `COOLIFY_HOST` repository secrets.
 
 ## Verify
 
 ```sh
-gh release view v0.1.2 --repo OhRats-Technologies/keyboard-killer \
+gh release view v0.1.2 --repo OhRats-Technologies/keyless \
   --json tagName,isDraft --jq '.tagName+" draft=\(.isDraft)"'
-curl -fsS https://keyboard-killer.ohrats.party/releases/SHA256SUMS
-curl -fsSIL https://keyboard-killer.ohrats.party/releases/keyboard-killer_amd64.deb
-curl -fsSL https://keyboard-killer.ohrats.party/install.sh | sh
+curl -fsS https://keyless.ohrats.party/releases/SHA256SUMS
+curl -fsSIL https://keyless.ohrats.party/releases/keyless_amd64.deb
+curl -fsSL https://keyless.ohrats.party/install.sh | sh
 ```
 
 Manual install smoke without root:
 
 ```sh
 TMPDIR="$(pwd)/build/install-tmp" \
-KEYBOARD_KILLER_APPIMAGE=1 \
-KEYBOARD_KILLER_APPIMAGE_DIR="$(pwd)/build/install-app" \
-KEYBOARD_KILLER_BIN_DIR="$(pwd)/build/install-bin" \
+KEYLESS_APPIMAGE=1 \
+KEYLESS_APPIMAGE_DIR="$(pwd)/build/install-app" \
+KEYLESS_BIN_DIR="$(pwd)/build/install-bin" \
 sh site/install.sh
-APPIMAGE_EXTRACT_AND_RUN=1 build/install-bin/keyboard-killer --help
+APPIMAGE_EXTRACT_AND_RUN=1 build/install-bin/keyless --help
 ```
 
 ## Traps
@@ -92,7 +92,7 @@ APPIMAGE_EXTRACT_AND_RUN=1 build/install-bin/keyboard-killer --help
 
 ## Rollback
 
-Keep the previous release assets in `/data/keyboard-killer-releases` until the
+Keep the previous release assets in `/data/keyless-releases` until the
 new version passes the install smoke. The installer always verifies
 `SHA256SUMS`; a rollback is a restore of the previous three files plus
 `install.sh`.

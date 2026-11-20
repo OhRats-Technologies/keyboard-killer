@@ -1,26 +1,26 @@
 #!/bin/sh
-# Keyboard-Killer Linux installer.
+# Keyless Linux installer.
 #
-#   curl -fsSL https://keyboard-killer.ohrats.party/install.sh | sh
+#   curl -fsSL https://keyless.ohrats.party/install.sh | sh
 #
 # Debian/Ubuntu: installs the self-contained .deb with apt.
 # Other distributions or no sudo: installs the AppImage for the current user.
 set -eu
 
-REPO="OhRats-Technologies/keyboard-killer"
-RELEASE_BASE="${KEYBOARD_KILLER_RELEASE_BASE:-https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download}"
-ASSET_DEB="keyboard-killer_amd64.deb"
-ASSET_APPIMAGE="keyboard-killer-x86_64.AppImage"
+REPO="OhRats-Technologies/keyless"
+RELEASE_BASE="${KEYLESS_RELEASE_BASE:-https://github.com/OhRats-Technologies/keyless/releases/latest/download}"
+ASSET_DEB="keyless_amd64.deb"
+ASSET_APPIMAGE="keyless-x86_64.AppImage"
 SUMS="SHA256SUMS"
-APP_DIR="${KEYBOARD_KILLER_APPIMAGE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/keyboard-killer}"
-BIN_DIR="${KEYBOARD_KILLER_BIN_DIR:-$HOME/.local/bin}"
+APP_DIR="${KEYLESS_APPIMAGE_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/keyless}"
+BIN_DIR="${KEYLESS_BIN_DIR:-$HOME/.local/bin}"
 DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 
-TMP="$(mktemp -d "${TMPDIR:-/tmp}/keyboard-killer-install.XXXXXX")"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/keyless-install.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
 say() { printf '%s\n' "$*"; }
-fail() { printf 'keyboard-killer: %s\n' "$*" >&2; exit 1; }
+fail() { printf 'keyless: %s\n' "$*" >&2; exit 1; }
 
 case "$(uname -m)" in
   x86_64|amd64) ;;
@@ -36,7 +36,7 @@ download "${RELEASE_BASE}/${SUMS}" "$TMP/$SUMS" ||
   fail "could not download ${RELEASE_BASE}/${SUMS}"
 
 use_deb=0
-if [ "${KEYBOARD_KILLER_APPIMAGE:-0}" != "1" ] && command -v apt-get >/dev/null 2>&1; then
+if [ "${KEYLESS_APPIMAGE:-0}" != "1" ] && command -v apt-get >/dev/null 2>&1; then
   use_deb=1
 fi
 
@@ -54,8 +54,8 @@ if [ "$use_deb" = "1" ]; then
   verify "$ASSET_DEB"
   say "Installing the Debian package (apt will ask for your password if needed)..."
   sudo apt-get install -y --no-install-recommends "$TMP/$ASSET_DEB" ||
-    fail "apt could not install the package; set KEYBOARD_KILLER_APPIMAGE=1 to install the AppImage instead"
-  say "Installed. Open Keyboard-Killer from the application menu, or run: keyboard-killer ui"
+    fail "apt could not install the package; set KEYLESS_APPIMAGE=1 to install the AppImage instead"
+  say "Installed. Open Keyless from the application menu, or run: keyless ui"
   exit 0
 fi
 
@@ -64,26 +64,26 @@ download "${RELEASE_BASE}/${ASSET_APPIMAGE}" "$TMP/$ASSET_APPIMAGE" || fail "cou
 verify "$ASSET_APPIMAGE"
 
 mkdir -p "$APP_DIR" "$BIN_DIR" "$DESKTOP_DIR"
-install -m 0755 "$TMP/$ASSET_APPIMAGE" "$APP_DIR/Keyboard-Killer.AppImage"
-cat > "$BIN_DIR/keyboard-killer" <<EOF
+install -m 0755 "$TMP/$ASSET_APPIMAGE" "$APP_DIR/Keyless.AppImage"
+cat > "$BIN_DIR/keyless" <<EOF
 #!/bin/sh
-exec "$APP_DIR/Keyboard-Killer.AppImage" "\$@"
+exec "$APP_DIR/Keyless.AppImage" "\$@"
 EOF
-chmod 0755 "$BIN_DIR/keyboard-killer"
-cat > "$DESKTOP_DIR/keyboard-killer.desktop" <<EOF
+chmod 0755 "$BIN_DIR/keyless"
+cat > "$DESKTOP_DIR/keyless.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Keyboard-Killer
+Name=Keyless
 Comment=Gaze and voice control
-Exec=$APP_DIR/Keyboard-Killer.AppImage ui
-Icon=keyboard-killer
+Exec=$APP_DIR/Keyless.AppImage ui
+Icon=keyless
 Terminal=false
 Categories=Utility;Accessibility;
 EOF
 
-say "Installed Keyboard-Killer to $APP_DIR/Keyboard-Killer.AppImage"
+say "Installed Keyless to $APP_DIR/Keyless.AppImage"
 case ":$PATH:" in
   *":$BIN_DIR:"*) ;;
-  *) say "Add $BIN_DIR to PATH to run the keyboard-killer command, or open the app menu entry." ;;
+  *) say "Add $BIN_DIR to PATH to run the keyless command, or open the app menu entry." ;;
 esac
-say "Open Keyboard-Killer from the application menu, or run: $BIN_DIR/keyboard-killer ui"
+say "Open Keyless from the application menu, or run: $BIN_DIR/keyless ui"

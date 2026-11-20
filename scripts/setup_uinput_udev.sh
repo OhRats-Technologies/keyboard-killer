@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RULE_PATH="/etc/udev/rules.d/99-keyboard-killer-uinput.rules"
+RULE_PATH="/etc/udev/rules.d/99-keyless-uinput.rules"
 RULE_CONTENT='KERNEL=="uinput", SUBSYSTEM=="misc", MODE="0660", GROUP="input", TAG+="uaccess"'
 
 echo "Installing udev rule to ${RULE_PATH}..."

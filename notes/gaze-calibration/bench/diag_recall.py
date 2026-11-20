@@ -4,7 +4,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent))
 from gazesim import Subject, World, make_rig, run_calibration, run_session
 from bench import GeoController, script_for
-from keyboard_killer.vision.geo_gaze import GeoGazeModel
+from keyless.vision.geo_gaze import GeoGazeModel
 rig_name = "single"; head0 = np.array([26.5, 10.0, -62.0])
 cal = World(make_rig(rig_name), Subject(), np.random.default_rng(11), head0)
 X, Y, G = run_calibration(cal, False)

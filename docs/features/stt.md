@@ -2,7 +2,7 @@
 
 ## Shipped contract
 
-`keyboard_killer.voice.stt.base.SttEngine`:
+`keyless.voice.stt.base.SttEngine`:
 
 ```python
 transcribe(audio_f32) -> str
@@ -77,9 +77,9 @@ JSON files below.
 ## Reproduce
 
 ```bash
-uv run keyboard-killer models download stt
-uv run keyboard-killer models verify stt
-uv run keyboard-killer test-audio --seconds 5 --transcribe
+uv run keyless models download stt
+uv run keyless models verify stt
+uv run keyless test-audio --seconds 5 --transcribe
 uv run python scripts/stt_benchmark.py /path/to/manifest.json --engine parakeet
 ```
 

@@ -10,7 +10,7 @@ The previous gaze pipeline (`StereoGazeModel`) regresses a 20-D facial feature v
 
 ### Solution: 3-D Ray-Plane Geometry + Online EKF + Cursor-Chase Self-Calibration
 
-Implemented in [`src/keyboard_killer/vision/geo_gaze.py`](../../src/keyboard_killer/vision/geo_gaze.py).
+Implemented in [`src/keyless/vision/geo_gaze.py`](../../src/keyless/vision/geo_gaze.py).
 
 ---
 

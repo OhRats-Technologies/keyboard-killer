@@ -6,16 +6,16 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from keyboard_killer.config.paths import HOME_ENV, default_paths
-from keyboard_killer.config.schema import AppConfig
-from keyboard_killer.diagnostics.doctor import collect_doctor, format_text
-from keyboard_killer.platform.base import (
+from keyless.config.paths import HOME_ENV, default_paths
+from keyless.config.schema import AppConfig
+from keyless.diagnostics.doctor import collect_doctor, format_text
+from keyless.platform.base import (
     CapabilityInfo,
     CapabilityStatus,
     PermissionInfo,
     PermissionState,
 )
-from keyboard_killer.platform.capabilities import Capability, CapabilityReport
+from keyless.platform.capabilities import Capability, CapabilityReport
 
 
 class _FakeSoundDevice:
@@ -70,8 +70,8 @@ def test_doctor_report_serializes_and_matches_ui_fields(tmp_path: Path) -> None:
     assert payload["audio"]["default"] == [2, 5]
     assert payload["stt"]["selected"] in {"parakeet", "missing", "unavailable"}
     assert payload["providers"]["text_llm"]["status"]["state"] == "not_checked"
-    assert payload["keychain"]["service"] == "keyboard-killer"
-    assert "Keyboard-Killer" in format_text(report)
+    assert payload["keychain"]["service"] == "keyless"
+    assert "Keyless" in format_text(report)
 
 
 def test_doctor_ok_requires_core_capabilities(tmp_path: Path) -> None:

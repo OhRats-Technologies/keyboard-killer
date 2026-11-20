@@ -5,7 +5,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent))
 from gazesim import Subject, World, make_rig, run_calibration, run_session
 from bench import GeoController, script_for
-from keyboard_killer.vision.geo_gaze import GeoGazeModel
+from keyless.vision.geo_gaze import GeoGazeModel
 
 rig_name = sys.argv[1] if len(sys.argv) > 1 else "single"
 dur = float(sys.argv[2]) if len(sys.argv) > 2 else 150

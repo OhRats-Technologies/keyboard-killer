@@ -5,8 +5,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from keyboard_killer.platform.base import CapabilityStatus, PermissionState
-from keyboard_killer.platform.capabilities import (
+from keyless.platform.base import CapabilityStatus, PermissionState
+from keyless.platform.capabilities import (
     Capability,
     CapabilityReport,
     detect_capabilities,
@@ -78,7 +78,7 @@ def test_audio_probe_uses_injected_sounddevice() -> None:
 
 
 def test_hotkey_probe_does_not_assume_devices(tmp_path: Path, monkeypatch) -> None:
-    import keyboard_killer.platform.capabilities as caps
+    import keyless.platform.capabilities as caps
 
     monkeypatch.setattr(caps.Path, "glob", lambda self, pattern: [])
     info = probe_hotkeys()

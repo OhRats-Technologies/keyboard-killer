@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from keyboard_killer.platform.linux.cameras import resolve_camera_config
+from keyless.platform.linux.cameras import resolve_camera_config
 
 
 def _exists(path: str) -> bool:

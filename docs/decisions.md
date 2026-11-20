@@ -22,7 +22,7 @@
 | D1 | **Done** | PySide6 control-room shell, tray, resumable onboarding, settings, history, tokens, headless goldens |
 | D2 | **Done** | App-owned Parakeet/landmarks; no bundled LLM; role-split providers |
 | D3 | **Done for Linux** | X11 click-through pill; Wayland tray/toast fallback with reason; no GNOME Shell extension |
-| D4 | **Done** | `config/paths.py`, `KEYBOARD_KILLER_HOME`, non-destructive migration; models in data, landmarker in cache |
+| D4 | **Done** | `config/paths.py`, `KEYLESS_HOME`, non-destructive migration; models in data, landmarker in cache |
 | D5 | **Partial** | Stable by-id discovery, camera picker, mono (1 camera) and stereo (2) paths; calibration still a single legacy file, not `<pair>-<monitor>.json` |
 | D6 | **Partial** | Screen capability/permission is reported before clicks; the first capture still triggers the OS prompt |
 | D7 | **Linux done** | `.deb` and AppImage built with udev/desktop/systemd; no signing, no macOS/Windows installers |
@@ -89,12 +89,12 @@ The app never bundles an LLM runtime. App-owned assets use the Hex pattern: pinn
 
 | Root | Linux | macOS | Windows |
 |---|---|---|---|
-| config | `~/.config/keyboard-killer` | `~/Library/Application Support/Keyboard-Killer` | `%APPDATA%\Keyboard-Killer` |
-| data | `~/.local/share/keyboard-killer` | `~/Library/Application Support/Keyboard-Killer` | `%LOCALAPPDATA%\Keyboard-Killer` |
-| cache | `~/.cache/keyboard-killer` | `~/Library/Caches/Keyboard-Killer` | `%LOCALAPPDATA%\Keyboard-Killer\cache` |
-| logs | `~/.local/state/keyboard-killer/logs` | `~/Library/Logs/Keyboard-Killer` | `%LOCALAPPDATA%\Keyboard-Killer\logs` |
+| config | `~/.config/keyless` | `~/Library/Application Support/Keyless` | `%APPDATA%\Keyless` |
+| data | `~/.local/share/keyless` | `~/Library/Application Support/Keyless` | `%LOCALAPPDATA%\Keyless` |
+| cache | `~/.cache/keyless` | `~/Library/Caches/Keyless` | `%LOCALAPPDATA%\Keyless\cache` |
+| logs | `~/.local/state/keyless/logs` | `~/Library/Logs/Keyless` | `%LOCALAPPDATA%\Keyless\logs` |
 
-- `KEYBOARD_KILLER_HOME` overrides all roots for tests/portable installs.
+- `KEYLESS_HOME` overrides all roots for tests/portable installs.
 - Migrate the current `config.json`, `stereo_calib.json`, and `calib_dataset.npz` once; keep the old files.
 - Models are data, not cache; the MediaPipe landmarker is cache.
 - Windows: keep large models/logs in `LocalAppData`, not roaming `AppData`.
@@ -181,7 +181,7 @@ A role declares what it needs (`gaze_vlm` needs `image_input` and `latency_class
 
 ### ACP adapter
 
-ACP is an editor↔coding-agent protocol. Keyboard-Killer acts as the **client**: it spawns the agent, calls `initialize` → (`authenticate`) → `session/new` → `session/prompt`, and concatenates `agent_message_chunk` updates into the reply.
+ACP is an editor↔coding-agent protocol. Keyless acts as the **client**: it spawns the agent, calls `initialize` → (`authenticate`) → `session/new` → `session/prompt`, and concatenates `agent_message_chunk` updates into the reply.
 
 - **Catalog:** read the [ACP registry](https://agentclientprotocol.com/registry) to populate the picker (launch command: `npx`/`uvx`/binary). Listed agents include Claude (via the `claude-agent-acp` adapter), Codex (`codex-acp`), Gemini CLI (`gemini --acp`), GitHub Copilot, OpenCode, Cline, Kimi CLI, and Factory Droid. Verify the list at build time; do not hard-code it. Ship a small offline fallback list.
 - **Auth:** the agent owns it (the user signs in with that agent's own CLI/subscription). The app surfaces `needs_auth` and the agent's `authMethods`; it stores no credential.

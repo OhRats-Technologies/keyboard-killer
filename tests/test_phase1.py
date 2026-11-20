@@ -4,21 +4,21 @@ from __future__ import annotations
 
 import numpy as np
 
-from keyboard_killer.config import (
+from keyless.config import (
     DisplayLayout,
     MonitorInfo,
     parse_kscreen_layout,
     parse_mutter_display_state,
 )
-from keyboard_killer.input.pointer import DryRunPointerBackend
-from keyboard_killer.ipc.state import (
+from keyless.input.pointer import DryRunPointerBackend
+from keyless.ipc.state import (
     FLAG_BLINKING,
     FLAG_FACE_DETECTED,
     FLAG_SACCADE_JUMP,
     SharedGazeReader,
     SharedGazeWriter,
 )
-from keyboard_killer.vision.calibrator import (
+from keyless.vision.calibrator import (
     EXPANDED_FEATURE_DIM,
     StereoGazeModel,
     _align_and_filter_pursuit_stroke,
@@ -27,9 +27,9 @@ from keyboard_killer.vision.calibrator import (
     _save_replay_dataset,
     _trim_dot_outliers,
 )
-from keyboard_killer.vision.cursor_gimbal import GazeGimbalController
-from keyboard_killer.vision.landmarks import STEREO_FEATURE_DIM
-from keyboard_killer.vision.one_euro import OneEuroFilter2D
+from keyless.vision.cursor_gimbal import GazeGimbalController
+from keyless.vision.landmarks import STEREO_FEATURE_DIM
+from keyless.vision.one_euro import OneEuroFilter2D
 
 
 def test_parse_mutter_display_state_dual_monitor() -> None:

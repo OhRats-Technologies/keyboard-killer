@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build a self-contained Linux .deb (and optionally an AppImage).
 
-The package bundles a relocatable Python + virtualenv under /opt/keyboard-killer
+The package bundles a relocatable Python + virtualenv under /opt/keyless
 so a new user needs no terminal, no uv, and no pip.
 """
 
@@ -28,7 +28,7 @@ VERSION = re.search(
     flags=re.MULTILINE,
 ).group(1)
 ARCH = "amd64"
-PACKAGE = "keyboard-killer"
+PACKAGE = "keyless"
 
 
 def run(command: list[str], **kwargs) -> None:
@@ -48,7 +48,7 @@ def ensure_runtime(*, force: bool = False) -> Path:
                 [
                     str(venv / "bin" / "python"),
                     "-c",
-                    "import keyboard_killer, PySide6, onnx_asr, keyring; "
+                    "import keyless, PySide6, onnx_asr, keyring; "
                     "from importlib.metadata import version; version('mediapipe'); version('sounddevice')",
                 ],
                 check=True,
@@ -102,7 +102,7 @@ def ensure_runtime(*, force: bool = False) -> Path:
         [
             str(bin_dir / "python"),
             "-c",
-            "import keyboard_killer, PySide6, onnx_asr, keyring; "
+            "import keyless, PySide6, onnx_asr, keyring; "
             "from importlib.metadata import version; version('mediapipe'); version('sounddevice'); "
             "print('bundled runtime ok')",
         ]
@@ -178,43 +178,43 @@ def build_deb(*, bundle_venv: bool = True, output: Path | None = None) -> Path:
     wrapper = bin_dir / PACKAGE
     if bundle_venv:
         runtime = ensure_runtime()
-        opt = stage / "opt" / "keyboard-killer"
+        opt = stage / "opt" / "keyless"
         opt.mkdir(parents=True)
         for name in ("python", "venv"):
             print(f"Copying runtime/{name}...")
             run(["cp", "-al", str(runtime / name), str(opt / name)])
-        wrapper.write_text("#!/bin/sh\nexec /opt/keyboard-killer/venv/bin/python -m keyboard_killer.main \"$@\"\n")
+        wrapper.write_text("#!/bin/sh\nexec /opt/keyless/venv/bin/python -m keyless.main \"$@\"\n")
     else:
         wrapper.write_text(
             "#!/bin/sh\n"
-            "# Structure-only build: expects an installed keyboard-killer package.\n"
-            "exec python3 -m keyboard_killer.main \"$@\"\n"
+            "# Structure-only build: expects an installed keyless package.\n"
+            "exec python3 -m keyless.main \"$@\"\n"
         )
     wrapper.chmod(0o755)
 
     applications = stage / "usr" / "share" / "applications"
     applications.mkdir(parents=True)
-    shutil.copy2(PACKAGING / "keyboard-killer.desktop", applications / "keyboard-killer.desktop")
+    shutil.copy2(PACKAGING / "keyless.desktop", applications / "keyless.desktop")
     icons = stage / "usr" / "share" / "icons" / "hicolor" / "scalable" / "apps"
     icons.mkdir(parents=True)
-    shutil.copy2(PACKAGING / "keyboard-killer.svg", icons / "keyboard-killer.svg")
+    shutil.copy2(PACKAGING / "keyless.svg", icons / "keyless.svg")
     png_dir = stage / "usr" / "share" / "icons" / "hicolor" / "256x256" / "apps"
     png_dir.mkdir(parents=True)
-    shutil.copy2(PACKAGING / "keyboard-killer.png", png_dir / "keyboard-killer.png")
+    shutil.copy2(PACKAGING / "keyless.png", png_dir / "keyless.png")
 
     udev = stage / "usr" / "lib" / "udev" / "rules.d"
     udev.mkdir(parents=True)
-    shutil.copy2(PACKAGING / "udev" / "99-keyboard-killer-uinput.rules", udev / "99-keyboard-killer-uinput.rules")
+    shutil.copy2(PACKAGING / "udev" / "99-keyless-uinput.rules", udev / "99-keyless-uinput.rules")
 
     systemd = stage / "usr" / "lib" / "systemd" / "user"
     systemd.mkdir(parents=True)
-    shutil.copy2(PACKAGING / "systemd" / "keyboard-killer.service", systemd / "keyboard-killer.service")
+    shutil.copy2(PACKAGING / "systemd" / "keyless.service", systemd / "keyless.service")
 
     doc = stage / "usr" / "share" / "doc" / PACKAGE
     doc.mkdir(parents=True)
     shutil.copy2(PACKAGING / "README.Debian", doc / "README.Debian")
     (doc / "copyright").write_text(
-        "Keyboard-Killer is distributed under the repository license.\n"
+        "Keyless is distributed under the repository license.\n"
         "Parakeet TDT 0.6B v2 is CC-BY-4.0 by NVIDIA; ONNX export by istupakov.\n"
     )
 
@@ -249,20 +249,20 @@ def build_deb(*, bundle_venv: bool = True, output: Path | None = None) -> Path:
 
 def build_appimage(*, output: Path | None = None) -> Path:
     runtime = ensure_runtime()
-    appdir = BUILD / "Keyboard-Killer.AppDir"
+    appdir = BUILD / "Keyless.AppDir"
     shutil.rmtree(appdir, ignore_errors=True)
     appdir.mkdir(parents=True)
     for name in ("python", "venv"):
         run(["cp", "-al", str(runtime / name), str(appdir / name)])
-    shutil.copy2(PACKAGING / "keyboard-killer.desktop", appdir / "keyboard-killer.desktop")
-    shutil.copy2(PACKAGING / "keyboard-killer.svg", appdir / "keyboard-killer.svg")
-    shutil.copy2(PACKAGING / "keyboard-killer.png", appdir / ".DirIcon")
+    shutil.copy2(PACKAGING / "keyless.desktop", appdir / "keyless.desktop")
+    shutil.copy2(PACKAGING / "keyless.svg", appdir / "keyless.svg")
+    shutil.copy2(PACKAGING / "keyless.png", appdir / ".DirIcon")
     apprun = appdir / "AppRun"
     apprun.write_text(
         "#!/bin/sh\n"
         "HERE=$(dirname \"$(readlink -f \"$0\")\")\n"
         "if [ \"$#\" -eq 0 ]; then set -- ui; fi\n"
-        "exec \"$HERE/venv/bin/python\" -m keyboard_killer.main \"$@\"\n"
+        "exec \"$HERE/venv/bin/python\" -m keyless.main \"$@\"\n"
     )
     apprun.chmod(0o755)
     run(["chmod", "-R", "a+rX", str(appdir)])
@@ -280,7 +280,7 @@ def build_appimage(*, output: Path | None = None) -> Path:
             ]
         )
         tool.chmod(0o755)
-    target = output or (ROOT / "dist" / f"Keyboard-Killer-{VERSION}-x86_64.AppImage")
+    target = output or (ROOT / "dist" / f"Keyless-{VERSION}-x86_64.AppImage")
     target.parent.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "ARCH": "x86_64", "APPIMAGE_EXTRACT_AND_RUN": "1"}
     run(

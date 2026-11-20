@@ -17,8 +17,8 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from keyboard_killer.vision.geo_gaze import MonitorGeom, MonitorSpec, _rotvec_to_mat
-from keyboard_killer.vision.landmarks import (
+from keyless.vision.geo_gaze import MonitorGeom, MonitorSpec, _rotvec_to_mat
+from keyless.vision.landmarks import (
     CameraObservation,
     _extract_los_euler_and_translation,
     _iris_offset_high_snr,

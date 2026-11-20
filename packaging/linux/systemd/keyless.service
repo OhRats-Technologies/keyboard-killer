@@ -1,0 +1,15 @@
+[Unit]
+Description=Keyless gaze and voice daemon
+Documentation=file:///usr/share/doc/keyless/README.Debian
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/keyless run
+Restart=on-failure
+RestartSec=3
+Slice=app.slice
+
+[Install]
+WantedBy=graphical-session.target

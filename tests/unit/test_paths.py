@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from keyboard_killer.config.migrations import ensure_migrated
-from keyboard_killer.config.paths import HOME_ENV, default_paths
-from keyboard_killer.config.schema import AppConfig
+from keyless.config.migrations import ensure_migrated
+from keyless.config.paths import HOME_ENV, default_paths
+from keyless.config.schema import AppConfig
 
 
 def test_linux_roots_follow_xdg_and_split_config_data_cache_logs() -> None:
@@ -16,17 +16,17 @@ def test_linux_roots_follow_xdg_and_split_config_data_cache_logs() -> None:
         platform_name="linux",
         home=Path("/home/alice"),
     )
-    assert paths.config_dir == Path("/tmp/cfg/keyboard-killer")
-    assert paths.data_dir == Path("/home/alice/.local/share/keyboard-killer")
-    assert paths.cache_dir == Path("/tmp/cache/keyboard-killer")
-    assert paths.logs_dir == Path("/home/alice/.local/state/keyboard-killer/logs")
+    assert paths.config_dir == Path("/tmp/cfg/keyless")
+    assert paths.data_dir == Path("/home/alice/.local/share/keyless")
+    assert paths.cache_dir == Path("/tmp/cache/keyless")
+    assert paths.logs_dir == Path("/home/alice/.local/state/keyless/logs")
     assert paths.settings_path == paths.config_dir / "settings.json"
     assert paths.models_dir == paths.data_dir / "models"
     assert paths.history_db_path == paths.data_dir / "history" / "actions.db"
     assert paths.landmarker_path == paths.cache_dir / "face_landmarker.task"
 
 
-def test_keyboard_killer_home_overrides_every_root(tmp_path: Path) -> None:
+def test_keyless_home_overrides_every_root(tmp_path: Path) -> None:
     root = tmp_path / "portable"
     paths = default_paths(env={HOME_ENV: str(root)}, platform_name="linux", home=Path("/home/alice"))
     assert paths.config_dir == root / "config"
@@ -38,10 +38,10 @@ def test_keyboard_killer_home_overrides_every_root(tmp_path: Path) -> None:
 
 def test_macos_uses_one_support_root_and_separate_logs() -> None:
     paths = default_paths(env={}, platform_name="darwin", home=Path("/Users/alice"))
-    assert paths.config_dir == Path("/Users/alice/Library/Application Support/Keyboard-Killer")
+    assert paths.config_dir == Path("/Users/alice/Library/Application Support/Keyless")
     assert paths.data_dir == paths.config_dir
-    assert paths.cache_dir == Path("/Users/alice/Library/Caches/Keyboard-Killer")
-    assert paths.logs_dir == Path("/Users/alice/Library/Logs/Keyboard-Killer")
+    assert paths.cache_dir == Path("/Users/alice/Library/Caches/Keyless")
+    assert paths.logs_dir == Path("/Users/alice/Library/Logs/Keyless")
 
 
 def test_windows_keeps_large_assets_out_of_roaming(tmp_path: Path) -> None:
@@ -50,10 +50,10 @@ def test_windows_keeps_large_assets_out_of_roaming(tmp_path: Path) -> None:
         "LOCALAPPDATA": str(tmp_path / "Local"),
     }
     paths = default_paths(env=env, platform_name="win32", home=tmp_path)
-    assert paths.config_dir == tmp_path / "Roaming" / "Keyboard-Killer"
-    assert paths.data_dir == tmp_path / "Local" / "Keyboard-Killer"
-    assert paths.models_dir == tmp_path / "Local" / "Keyboard-Killer" / "models"
-    assert paths.logs_dir == tmp_path / "Local" / "Keyboard-Killer" / "logs"
+    assert paths.config_dir == tmp_path / "Roaming" / "Keyless"
+    assert paths.data_dir == tmp_path / "Local" / "Keyless"
+    assert paths.models_dir == tmp_path / "Local" / "Keyless" / "models"
+    assert paths.logs_dir == tmp_path / "Local" / "Keyless" / "logs"
 
 
 def test_migration_copies_legacy_files_and_keeps_the_originals(tmp_path: Path) -> None:

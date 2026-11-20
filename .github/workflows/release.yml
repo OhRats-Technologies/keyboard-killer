@@ -69,15 +69,15 @@ jobs:
         run: |
           VERSION="$(./scripts/check-version.sh)"
           uv run --python 3.13 python packaging/linux/build_deb.py --force-runtime \
-            --appimage --output "dist/keyboard-killer_${VERSION}_amd64.deb"
-          cp "dist/keyboard-killer_${VERSION}_amd64.deb" dist/keyboard-killer_amd64.deb
-          cp "dist/Keyboard-Killer-${VERSION}-x86_64.AppImage" dist/keyboard-killer-x86_64.AppImage
+            --appimage --output "dist/keyless_${VERSION}_amd64.deb"
+          cp "dist/keyless_${VERSION}_amd64.deb" dist/keyless_amd64.deb
+          cp "dist/Keyless-${VERSION}-x86_64.AppImage" dist/keyless-x86_64.AppImage
           cp site/install.sh dist/install.sh
-          (cd dist && sha256sum keyboard-killer_amd64.deb keyboard-killer-x86_64.AppImage install.sh > SHA256SUMS)
+          (cd dist && sha256sum keyless_amd64.deb keyless-x86_64.AppImage install.sh > SHA256SUMS)
           printf '{"version":"%s"}\n' "$GITHUB_REF_NAME" > dist/version.json
-          ar t dist/keyboard-killer_amd64.deb
+          ar t dist/keyless_amd64.deb
           (cd dist && sha256sum -c SHA256SUMS)
-      - name: Mirror release assets to keyboard-killer.ohrats.party
+      - name: Mirror release assets to keyless.ohrats.party
         env:
           COOLIFY_SSH_KEY: ${{ secrets.COOLIFY_SSH_KEY }}
           COOLIFY_HOST: ${{ secrets.COOLIFY_HOST }}
@@ -87,8 +87,8 @@ jobs:
           printf '%s\n' "$COOLIFY_SSH_KEY" > "$RUNNER_TEMP/deploy_key"
           chmod 600 "$RUNNER_TEMP/deploy_key"
           scp -i "$RUNNER_TEMP/deploy_key" -o StrictHostKeyChecking=accept-new \
-            dist/keyboard-killer_amd64.deb dist/keyboard-killer-x86_64.AppImage \
-            dist/SHA256SUMS dist/version.json "root@${COOLIFY_HOST}:/data/keyboard-killer-releases/"
+            dist/keyless_amd64.deb dist/keyless-x86_64.AppImage \
+            dist/SHA256SUMS dist/version.json "root@${COOLIFY_HOST}:/data/keyless-releases/"
       - name: Publish immutable GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -96,10 +96,10 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --draft \
-            --title "Keyboard-Killer ${GITHUB_REF_NAME#v}" \
+            --title "Keyless ${GITHUB_REF_NAME#v}" \
             --generate-notes \
-            dist/keyboard-killer_amd64.deb \
-            dist/keyboard-killer-x86_64.AppImage \
+            dist/keyless_amd64.deb \
+            dist/keyless-x86_64.AppImage \
             dist/install.sh \
             dist/SHA256SUMS
           gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
@@ -109,10 +109,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      KEYBOARD_KILLER_RELEASE_BASE: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
-      KEYBOARD_KILLER_APPIMAGE: "1"
-      KEYBOARD_KILLER_APPIMAGE_DIR: ${{ github.workspace }}/.install/app
-      KEYBOARD_KILLER_BIN_DIR: ${{ github.workspace }}/.install/bin
+      KEYLESS_RELEASE_BASE: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+      KEYLESS_APPIMAGE: "1"
+      KEYLESS_APPIMAGE_DIR: ${{ github.workspace }}/.install/app
+      KEYLESS_BIN_DIR: ${{ github.workspace }}/.install/bin
       APPIMAGE_EXTRACT_AND_RUN: "1"
     steps:
       - uses: actions/checkout@v4
@@ -121,9 +121,9 @@ jobs:
       - name: Install published AppImage
         run: |
           sh site/install.sh
-          test -x "$KEYBOARD_KILLER_BIN_DIR/keyboard-killer"
-          "$KEYBOARD_KILLER_BIN_DIR/keyboard-killer" --help >/dev/null
+          test -x "$KEYLESS_BIN_DIR/keyless"
+          "$KEYLESS_BIN_DIR/keyless" --help >/dev/null
       - name: Re-run installer idempotently
         run: |
           sh site/install.sh
-          "$KEYBOARD_KILLER_BIN_DIR/keyboard-killer" --help >/dev/null
+          "$KEYLESS_BIN_DIR/keyless" --help >/dev/null

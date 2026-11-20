@@ -1,23 +1,23 @@
-Keyboard-Killer for Debian/Ubuntu
+Keyless for Debian/Ubuntu
 ===============================
 
 Install
 -------
 
-  sudo apt install ./keyboard-killer_<version>_amd64.deb
+  sudo apt install ./keyless_<version>_amd64.deb
 
 The package installs:
 
-  /usr/bin/keyboard-killer                  CLI and UI launcher
-  /opt/keyboard-killer/                     self-contained Python runtime
-  /usr/share/applications/keyboard-killer.desktop
-  /usr/lib/udev/rules.d/99-keyboard-killer-uinput.rules
-  /usr/lib/systemd/user/keyboard-killer.service (optional, not enabled)
+  /usr/bin/keyless                  CLI and UI launcher
+  /opt/keyless/                     self-contained Python runtime
+  /usr/share/applications/keyless.desktop
+  /usr/lib/udev/rules.d/99-keyless-uinput.rules
+  /usr/lib/systemd/user/keyless.service (optional, not enabled)
 
 First run
 ---------
 
-Open "Keyboard-Killer" from the application menu. Setup:
+Open "Keyless" from the application menu. Setup:
 
   1. Permissions: camera, microphone, /dev/uinput, input devices, screen capture.
   2. Cameras: choose two stable /dev/v4l/by-id devices.
@@ -39,11 +39,11 @@ VLM after the explicit "Allow screenshots to leave this device" consent.
 Autostart (optional)
 --------------------
 
-  systemctl --user enable --now keyboard-killer.service
+  systemctl --user enable --now keyless.service
 
 Uninstall
 ---------
 
-  sudo apt remove keyboard-killer
-  rm -rf ~/.local/share/keyboard-killer   # models, history (optional)
-  rm -rf ~/.config/keyboard-killer        # settings, calibration (optional)
+  sudo apt remove keyless
+  rm -rf ~/.local/share/keyless   # models, history (optional)
+  rm -rf ~/.config/keyless        # settings, calibration (optional)

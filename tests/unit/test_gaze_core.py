@@ -9,13 +9,13 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from keyboard_killer.audio.quick_test import DEFAULT_SECONDS, run_speech_test
-from keyboard_killer.config.schema import AppConfig
-from keyboard_killer.ipc.state import FLAG_BLINKING, FLAG_FACE_DETECTED, GazeState
-from keyboard_killer.ui.gaze_art import demo_gaze
-from keyboard_killer.ui.gaze_source import gaze_state_sample
-from keyboard_killer.ui.screen_cursor import ScreenCursor
-from keyboard_killer.voice.stt.base import SttResult
+from keyless.audio.quick_test import DEFAULT_SECONDS, run_speech_test
+from keyless.config.schema import AppConfig
+from keyless.ipc.state import FLAG_BLINKING, FLAG_FACE_DETECTED, GazeState
+from keyless.ui.gaze_art import demo_gaze
+from keyless.ui.gaze_source import gaze_state_sample
+from keyless.ui.screen_cursor import ScreenCursor
+from keyless.voice.stt.base import SttResult
 
 
 def test_demo_gaze_stays_on_screen_and_moves() -> None:
@@ -69,7 +69,7 @@ def test_run_speech_test_uses_the_local_engine(monkeypatch) -> None:
         assert seconds == DEFAULT_SECONDS
         return np.full(int(seconds * sample_rate), 0.2, dtype=np.float32)
 
-    monkeypatch.setattr("keyboard_killer.audio.quick_test.record_clip", fake_record)
+    monkeypatch.setattr("keyless.audio.quick_test.record_clip", fake_record)
     stages: list[str] = []
     result = run_speech_test(AppConfig(), engine=FakeEngine(), on_stage=stages.append)
     assert result.transcript == "click send"
@@ -81,7 +81,7 @@ def test_run_speech_test_uses_the_local_engine(monkeypatch) -> None:
 
 
 def _layout():
-    from keyboard_killer.platform.base import DisplayLayout, MonitorInfo
+    from keyless.platform.base import DisplayLayout, MonitorInfo
 
     return DisplayLayout(
         monitors=(
@@ -96,7 +96,7 @@ def _layout():
 def test_calibration_region_places_bounds_on_their_monitor(tmp_path) -> None:
     import json
 
-    from keyboard_killer.ui.gaze_region import calibration_region
+    from keyless.ui.gaze_region import calibration_region
 
     path = tmp_path / "calib.json"
     path.write_text(
@@ -116,7 +116,7 @@ def test_calibration_region_places_bounds_on_their_monitor(tmp_path) -> None:
 def test_calibration_region_falls_back_to_primary(tmp_path) -> None:
     import json
 
-    from keyboard_killer.ui.gaze_region import calibration_region
+    from keyless.ui.gaze_region import calibration_region
 
     path = tmp_path / "calib.json"
     path.write_text(json.dumps({"monitor_connector": "MISSING", "bounds": {}}))
@@ -126,7 +126,7 @@ def test_calibration_region_falls_back_to_primary(tmp_path) -> None:
 
 
 def test_cursor_motion_converges_without_overshoot() -> None:
-    from keyboard_killer.ui.cursor_motion import GazeMotion
+    from keyless.ui.cursor_motion import GazeMotion
 
     motion = GazeMotion()
     motion.reset(0.0, 0.0)
@@ -142,7 +142,7 @@ def test_cursor_motion_converges_without_overshoot() -> None:
 def test_cursor_motion_holds_a_fixation_against_jitter() -> None:
     import math
 
-    from keyboard_killer.ui.cursor_motion import GazeMotion, MotionSettings
+    from keyless.ui.cursor_motion import GazeMotion, MotionSettings
 
     motion = GazeMotion(
         MotionSettings(fixation_radius=22.0, fixation_break_radius=40.0, search_spread=80.0)
@@ -159,7 +159,7 @@ def test_cursor_motion_holds_a_fixation_against_jitter() -> None:
 
 
 def test_cursor_motion_holds_when_no_face_is_present() -> None:
-    from keyboard_killer.ui.cursor_motion import GazeMotion
+    from keyless.ui.cursor_motion import GazeMotion
 
     motion = GazeMotion()
     motion.reset(50.0, 60.0)

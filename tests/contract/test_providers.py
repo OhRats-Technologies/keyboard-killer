@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from keyboard_killer.models.providers.base import (
+from keyless.models.providers.base import (
     ProviderCapabilities,
     ProviderError,
     ProviderState,
@@ -17,9 +17,9 @@ from keyboard_killer.models.providers.base import (
     check_provider_for_role,
     ProviderBinding,
 )
-from keyboard_killer.models.providers.ollama import OllamaProvider
-from keyboard_killer.models.providers.openai_compat import OpenAICompatProvider
-from keyboard_killer.models.providers.presets import get_preset, load_presets
+from keyless.models.providers.ollama import OllamaProvider
+from keyless.models.providers.openai_compat import OpenAICompatProvider
+from keyless.models.providers.presets import get_preset, load_presets
 
 
 class _OpenAIHandler(BaseHTTPRequestHandler):
@@ -244,7 +244,7 @@ def test_role_capability_checks_and_remote_vlm_consent() -> None:
 
 
 def test_keychain_secret_resolution_prefers_keychain(monkeypatch) -> None:
-    import keyboard_killer.models.providers.secrets as secrets
+    import keyless.models.providers.secrets as secrets
 
     stored: dict[str, str] = {}
 
@@ -273,7 +273,7 @@ def test_keychain_secret_resolution_prefers_keychain(monkeypatch) -> None:
 
 
 def test_llm_agent_uses_provider_and_keeps_json_helpers() -> None:
-    from keyboard_killer.routing.llm import LLMAgent
+    from keyless.routing.llm import LLMAgent
 
     class FakeProvider:
         id = "fake"
@@ -311,9 +311,9 @@ def test_llm_agent_uses_provider_and_keeps_json_helpers() -> None:
 
 
 def test_llm_agent_resolves_gemini_through_openai_compat(monkeypatch) -> None:
-    from keyboard_killer.models.providers.ollama import OllamaProvider
-    from keyboard_killer.models.providers.openai_compat import OpenAICompatProvider
-    from keyboard_killer.routing.llm import LLMAgent
+    from keyless.models.providers.ollama import OllamaProvider
+    from keyless.models.providers.openai_compat import OpenAICompatProvider
+    from keyless.routing.llm import LLMAgent
 
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     assert isinstance(LLMAgent(backend="auto").provider, OllamaProvider)
@@ -325,8 +325,8 @@ def test_llm_agent_resolves_gemini_through_openai_compat(monkeypatch) -> None:
 
 
 def test_role_resolution_requires_remote_vlm_consent() -> None:
-    from keyboard_killer.config import AppConfig
-    from keyboard_killer.models.providers.roles import resolve_gaze_vlm_role
+    from keyless.config import AppConfig
+    from keyless.models.providers.roles import resolve_gaze_vlm_role
 
     config = AppConfig(
         gaze_vlm_provider="openai_compat",

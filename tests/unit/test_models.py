@@ -13,19 +13,19 @@ from typing import Any
 import numpy as np
 import pytest
 
-from keyboard_killer.config.paths import HOME_ENV, default_paths
-from keyboard_killer.models.catalog import (
+from keyless.config.paths import HOME_ENV, default_paths
+from keyless.models.catalog import (
     PARAKEET_TDT_0_6B_V2,
     ModelAsset,
     ModelFile,
     get_asset,
     stt_assets,
 )
-from keyboard_killer.models.downloader import ChecksumMismatch, DownloadError, download_asset
-from keyboard_killer.models.receipts import ModelReceipt
-from keyboard_killer.models.store import ModelState, ModelStore
-from keyboard_killer.voice.stt.base import SttEngine, SttResult, SttStatus
-from keyboard_killer.voice.stt.factory import SttModelMissing, create_stt_engine, stt_report
+from keyless.models.downloader import ChecksumMismatch, DownloadError, download_asset
+from keyless.models.receipts import ModelReceipt
+from keyless.models.store import ModelState, ModelStore
+from keyless.voice.stt.base import SttEngine, SttResult, SttStatus
+from keyless.voice.stt.factory import SttModelMissing, create_stt_engine, stt_report
 
 
 def _sha(data: bytes) -> str:
@@ -231,7 +231,7 @@ def test_parakeet_uses_local_int8_files_and_cpu_provider(monkeypatch, tmp_path: 
         return FakeAdapter()
 
     monkeypatch.setitem(sys.modules, "onnx_asr", SimpleNamespace(load_model=fake_load_model))
-    from keyboard_killer.voice.stt.parakeet import ParakeetSttEngine
+    from keyless.voice.stt.parakeet import ParakeetSttEngine
 
     engine = ParakeetSttEngine(tmp_path, quantization="int8")
     result = engine.transcribe_detailed(np.ones(16000, dtype=np.float32) * 0.1)
@@ -246,7 +246,7 @@ def test_parakeet_uses_local_int8_files_and_cpu_provider(monkeypatch, tmp_path: 
 
 
 def test_factory_requires_the_downloaded_parakeet_model(tmp_path: Path) -> None:
-    from keyboard_killer.config import AppConfig
+    from keyless.config import AppConfig
 
     cfg = AppConfig()
     with pytest.raises(SttModelMissing, match="models download stt"):
@@ -278,7 +278,7 @@ def test_stt_engine_protocol_accepts_the_flat_engine() -> None:
 
 
 def test_active_listener_uses_the_stt_engine_contract() -> None:
-    from keyboard_killer.audio.active_listener import ActiveVoiceListener
+    from keyless.audio.active_listener import ActiveVoiceListener
 
     class FakeEngine:
         name = "fake"

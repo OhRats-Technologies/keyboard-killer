@@ -1,6 +1,6 @@
 # CONCERNS
 
-Register of observed concerns for Keyboard-Killer, with the 2026-11-19 implementation status. The original concern text is preserved; resolved/partial/open reflects what shipped.
+Register of observed concerns for Keyless, with the 2026-11-19 implementation status. The original concern text is preserved; resolved/partial/open reflects what shipped.
 
 - Initial checkout: `45ea4e4` (2026-11-19). Implementation review: steps 1–8 on 2026-11-19.
 - Sources: the original checkout, the 2026-11-19 usability call recording, the product plan in `docs/`, and the implementation tests/packaging evidence below.
@@ -48,9 +48,9 @@ This is the post-implementation view. "Resolved" means the shipped behavior remo
 ### Evidence
 
 - `uv run pytest`: 97 tests pass, including contract tests with fake OpenAI-compatible and fake ACP servers and headless Qt goldens.
-- `uv run keyboard-killer doctor --json`: paths, cameras, audio, display, permissions, capabilities, STT (Parakeet ready), providers (Ollama unreachable is reported), keychain available.
+- `uv run keyless doctor --json`: paths, cameras, audio, display, permissions, capabilities, STT (Parakeet ready), providers (Ollama unreachable is reported), keychain available.
 - Real ACP round-trip: Claude Agent ACP returned `Hello.` in about 1.5 s after 1.3 s initialize.
-- Packaging: self-contained `keyboard-killer_0.1.0_amd64.deb` (675.5 MB) and `Keyboard-Killer-0.1.0-x86_64.AppImage` (561.4 MB) built; bundled runtime `doctor`/UI smoke-tested; `.deb` structure verified.
+- Packaging: self-contained `keyless_0.1.0_amd64.deb` (675.5 MB) and `Keyless-0.1.0-x86_64.AppImage` (561.4 MB) built; bundled runtime `doctor`/UI smoke-tested; `.deb` structure verified.
 - Hardware not proven: two cameras together, calibration, `/dev/uinput` synthetic clicks, screen capture, acoustic command recording. The microphone opened and the camera was discovered, but that is not a working end-to-end hardware test.
 - The 12 command phrases used in the STT benchmark were TTS-generated; the 40 real human clips were smart-home commands. No natural human desktop-command corpus was available.
 
@@ -58,8 +58,8 @@ This is the post-implementation view. "Resolved" means the shipped behavior remo
 
 ### C-01 — Camera binding is tied to one specific C270 and one specific CAM 313
 
-- **Evidence:** `src/keyboard_killer/config.py:12-13` hard-codes by-id paths that include device serials; `config.py:66-67` uses them as defaults; `main.py:89-118` only reports the configured paths.
-- **Impact:** any other camera — including another unit of the same model — shows as `MISSING` until `~/.config/keyboard-killer/config.json` is edited. There is no CLI flag or config command for camera IDs.
+- **Evidence:** `src/keyless/config.py:12-13` hard-codes by-id paths that include device serials; `config.py:66-67` uses them as defaults; `main.py:89-118` only reports the configured paths.
+- **Impact:** any other camera — including another unit of the same model — shows as `MISSING` until `~/.config/keyless/config.json` is edited. There is no CLI flag or config command for camera IDs.
 - **Severity:** High (blocker for non-default hardware).
 
 ### C-02 — Calibration is a mandatory, GUI-only gate before vision
@@ -222,7 +222,7 @@ This is the post-implementation view. "Resolved" means the shipped behavior remo
 
 ### L-01 — There is no product surface
 
-- **Evidence:** `pyproject.toml` exposes only the `keyboard-killer` CLI; `src/` has no app window, tray, or notifications; the only windows are `cv2.imshow` diagnostics (`main.py:225`, `calibrator.py:1281-1284`).
+- **Evidence:** `pyproject.toml` exposes only the `keyless` CLI; `src/` has no app window, tray, or notifications; the only windows are `cv2.imshow` diagnostics (`main.py:225`, `calibrator.py:1281-1284`).
 - **Layman impact:** there is nothing to open, look at, pause, or quit; the product is a terminal and a JSON file.
 - **Expected:** one app icon/window (or tray) with state, pause, setup, settings, and quit.
 - **Severity:** High.
@@ -292,7 +292,7 @@ This is the post-implementation view. "Resolved" means the shipped behavior remo
 
 ### L-11 — Settings are JSON and flags
 
-- **Evidence:** `~/.config/keyboard-killer/config.json` and CLI flags; no settings surface.
+- **Evidence:** `~/.config/keyless/config.json` and CLI flags; no settings surface.
 - **Layman impact:** the user cannot change hotkey, sensitivity, device, or model without editing files.
 - **Expected:** a small settings pane with sane defaults; changes apply live.
 - **Severity:** Medium.

@@ -13,8 +13,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent))
 from gazesim import DT, Subject, World, make_rig, run_calibration, features_from
 from bench import layout_of, HEAD0
-from keyboard_killer.vision.calibrator import StereoGazeModel
-from keyboard_killer.vision.geo_gaze import GeoGazeModel
+from keyless.vision.calibrator import StereoGazeModel
+from keyless.vision.geo_gaze import GeoGazeModel
 
 POSTURES = {
     "calib pose": ((0, 0, 0), (0, 0, 0)),

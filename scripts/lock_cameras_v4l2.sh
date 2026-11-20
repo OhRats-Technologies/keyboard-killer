@@ -3,8 +3,8 @@ set -euo pipefail
 
 echo "Locking V4L2 camera exposure & gain via Python ioctl..."
 uv run python -c "
-from keyboard_killer.config import AppConfig
-from keyboard_killer.vision.v4l2_config import lock_v4l2_controls
+from keyless.config import AppConfig
+from keyless.vision.v4l2_config import lock_v4l2_controls
 
 cfg = AppConfig.load()
 for name, path, exp, gain in [

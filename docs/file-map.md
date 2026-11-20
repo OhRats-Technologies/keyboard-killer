@@ -7,7 +7,7 @@ The goal is a layout where the shared engine is obvious, every OS-specific API i
 ## Target repository tree
 
 ```
-keyboard-killer/
+keyless/
 ├── docs/
 │   ├── README.md
 │   ├── architecture.md
@@ -21,18 +21,18 @@ keyboard-killer/
 │   └── firefox_ext/              # current firefox_ext/, moved when packaging settles
 ├── packaging/
 │   ├── linux/
-│   │   ├── udev/99-keyboard-killer-uinput.rules
-│   │   ├── keyboard-killer.desktop
-│   │   └── keyboard-killer.service
+│   │   ├── udev/99-keyless-uinput.rules
+│   │   ├── keyless.desktop
+│   │   └── keyless.service
 │   ├── macos/
 │   │   ├── Info.plist
-│   │   ├── keyboard-killer.entitlements
+│   │   ├── keyless.entitlements
 │   │   └── launchagent.plist
 │   └── windows/
 │       ├── installer.iss
-│       └── keyboard-killer.ico
+│       └── keyless.ico
 ├── scripts/                      # developer helpers only; no end-user setup
-├── src/keyboard_killer/
+├── src/keyless/
 │   ├── __init__.py
 │   ├── app/
 │   │   ├── __main__.py
@@ -175,7 +175,7 @@ keyboard-killer/
 
 | Area | Status | Notes |
 |---|---|---|
-| `config/` package (schema, paths, migrations) | **Done** | `settings.json`, one-time copy migration, `KEYBOARD_KILLER_HOME` |
+| `config/` package (schema, paths, migrations) | **Done** | `settings.json`, one-time copy migration, `KEYLESS_HOME` |
 | `platform/base.py`, `platform/capabilities.py` | **Done** | One capability report for doctor/UI |
 | Linux pointer/hotkeys/cameras/V4L2/screen/AT-SPI/display | **Done** | Behavior-preserving moves; compatibility imports updated |
 | STT (`voice/stt/`) | **Done** | Parakeet only (Whisper removed 2026-11-20), catalog/downloader/store/receipts |
@@ -197,10 +197,10 @@ keyboard-killer/
 
 | Current | Target | Notes |
 |---|---|---|
-| `main.py` (root) | `src/keyboard_killer/app/__main__.py` | Keep the root shim until packaging updates. |
-| `src/keyboard_killer/main.py` | `app/cli.py` | Typer commands stay the public CLI during migration. |
-| `src/keyboard_killer/daemon.py` | `app/daemon.py` | Composition root; move engine imports behind services. |
-| `src/keyboard_killer/config.py` | `config/schema.py` + `config/paths.py` + `config/migrations.py` | Split settings schema, OS paths, and migrations. |
+| `main.py` (root) | `src/keyless/app/__main__.py` | Keep the root shim until packaging updates. |
+| `src/keyless/main.py` | `app/cli.py` | Typer commands stay the public CLI during migration. |
+| `src/keyless/daemon.py` | `app/daemon.py` | Composition root; move engine imports behind services. |
+| `src/keyless/config.py` | `config/schema.py` + `config/paths.py` + `config/migrations.py` | Split settings schema, OS paths, and migrations. |
 | `vision/landmarks.py` | `gaze/landmarks.py` | No behavior change. |
 | `vision/stereo_capture.py` | `capture/stereo.py` + `platform/*/cameras.py` | Capture orchestration vs OS camera API. |
 | `vision/v4l2_config.py` | `platform/linux/cameras.py` + `platform/linux/v4l2.py` | Linux-only. |
@@ -236,7 +236,7 @@ keyboard-killer/
 3. **One path service.** No module computes its own config/cache/model path.
 4. **One capability report.** Onboarding, tray, settings, and `doctor` read the same `Capabilities`/`permission_state` values.
 5. **Do not move and change behavior in the same review.** A pure move is its own commit.
-6. **Keep the CLI.** `uv run keyboard-killer ...` remains valid through the migration and is the fallback for debugging.
+6. **Keep the CLI.** `uv run keyless ...` remains valid through the migration and is the fallback for debugging.
 7. **Keep the Firefox extension optional.** The product works without it; its absence is a capability state, not a crash.
 
 ## Docs tree (grow into this)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from keyboard_killer.ipc.transcript import read_transcript, write_transcript
+from keyless.ipc.transcript import read_transcript, write_transcript
 
 
 def test_write_transcript_is_atomic_and_increments_sequence(tmp_path) -> None:

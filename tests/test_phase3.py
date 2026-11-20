@@ -9,29 +9,29 @@ import cv2
 import numpy as np
 from evdev import ecodes
 
-from keyboard_killer.audio.active_listener import (
+from keyless.audio.active_listener import (
     BLOCK_SIZE,
     SAMPLE_RATE,
     ActiveVoiceListener,
     _SpeechVetoedPopDetector,
 )
-from keyboard_killer.config import DisplayLayout, MonitorInfo
-from keyboard_killer.input.pointer import DryRunPointerBackend
-from keyboard_killer.ipc.firefox_bridge import FirefoxDOMBridge
-from keyboard_killer.router.dispatcher import VoiceCommandRouter
-from keyboard_killer.router.gaze_vlm_clicker import (
+from keyless.config import DisplayLayout, MonitorInfo
+from keyless.input.pointer import DryRunPointerBackend
+from keyless.ipc.firefox_bridge import FirefoxDOMBridge
+from keyless.router.dispatcher import VoiceCommandRouter
+from keyless.router.gaze_vlm_clicker import (
     GazeVLMClicker,
     GroundingSelection,
     parse_voice_click_command,
 )
-from keyboard_killer.vision.calibrator import (
+from keyless.vision.calibrator import (
     _load_replay_dataset,
     append_harvested_calibration_samples,
 )
-from keyboard_killer.vision.cursor_gimbal import GazeGimbalController
-from keyboard_killer.vision.landmarks import STEREO_FEATURE_DIM
-from keyboard_killer.vision.ui_detector import GazeUIDetector, WaylandScreenCapturer
-from keyboard_killer.voice.stt.base import SttResult
+from keyless.vision.cursor_gimbal import GazeGimbalController
+from keyless.vision.landmarks import STEREO_FEATURE_DIM
+from keyless.vision.ui_detector import GazeUIDetector, WaylandScreenCapturer
+from keyless.voice.stt.base import SttResult
 
 
 def _make_desktop_image() -> np.ndarray:
@@ -455,7 +455,7 @@ def test_active_voice_listener_adaptive_pause_prevents_chopping() -> None:
 
 
 def test_dom_role_token_bag_and_llm_fallback_and_one_breath_type() -> None:
-    from keyboard_killer.ipc.firefox_bridge import DOMCandidate
+    from keyless.ipc.firefox_bridge import DOMCandidate
 
     cands = [
         DOMCandidate(
@@ -673,10 +673,10 @@ def test_internal_gaze_guide_mode_does_not_move_physical_mouse() -> None:
 
 
 def test_pause_video_and_box_that_says_ask_gemini() -> None:
-    from keyboard_killer.audio.active_listener import _VALID_COMMAND_PREFIXES
-    from keyboard_killer.ipc.firefox_bridge import DOMCandidate
-    from keyboard_killer.router.gaze_vlm_clicker import _clean_target_keywords
-    from keyboard_killer.vision.ui_detector import GazeROISnapshot, UIBoundingBox
+    from keyless.audio.active_listener import _VALID_COMMAND_PREFIXES
+    from keyless.ipc.firefox_bridge import DOMCandidate
+    from keyless.router.gaze_vlm_clicker import _clean_target_keywords
+    from keyless.vision.ui_detector import GazeROISnapshot, UIBoundingBox
 
     # 1. "pause video" prefix allowed and routes cleanly via DOM or media key fallback
     assert "pause video".startswith(_VALID_COMMAND_PREFIXES)
@@ -761,7 +761,7 @@ def test_pause_video_and_box_that_says_ask_gemini() -> None:
 
 
 def test_os_window_and_browser_tab_switching() -> None:
-    from keyboard_killer.audio.active_listener import _VALID_COMMAND_PREFIXES
+    from keyless.audio.active_listener import _VALID_COMMAND_PREFIXES
 
     for phrase in (
         "switch tab",
@@ -882,7 +882,7 @@ def test_os_window_and_browser_tab_switching() -> None:
 
 
 def test_new_tab_via_firefox_bridge_and_uinput_fallback() -> None:
-    from keyboard_killer.audio.active_listener import _VALID_COMMAND_PREFIXES
+    from keyless.audio.active_listener import _VALID_COMMAND_PREFIXES
 
     for phrase in ("new tab", "open a new tab", "create new tab", "new tab github.com"):
         assert phrase.startswith(_VALID_COMMAND_PREFIXES)
@@ -929,8 +929,8 @@ def test_new_tab_via_firefox_bridge_and_uinput_fallback() -> None:
 
 
 def test_popup_disambiguation_nested_contours_and_tier_order() -> None:
-    from keyboard_killer.ipc.firefox_bridge import DOMCandidate
-    from keyboard_killer.vision.ui_detector import GazeROISnapshot, UIBoundingBox
+    from keyless.ipc.firefox_bridge import DOMCandidate
+    from keyless.vision.ui_detector import GazeROISnapshot, UIBoundingBox
 
     # 1. Dialog box enclosing an inner checkbox and inner button -> RETR_LIST finds inner widgets
     dlg = np.full((300, 500, 3), 35, dtype=np.uint8)
@@ -1086,7 +1086,7 @@ def test_active_listener_allows_app_window_suffix() -> None:
 
 
 def test_teams_ckeditor_type_a_message_click_triggers_trusted_focus() -> None:
-    from keyboard_killer.ipc.firefox_bridge import DOMCandidate
+    from keyless.ipc.firefox_bridge import DOMCandidate
 
     bridge = FirefoxDOMBridge(host="127.0.0.1", port=0)
     teams_box = DOMCandidate(
@@ -1142,7 +1142,7 @@ def test_teams_ckeditor_type_a_message_click_triggers_trusted_focus() -> None:
 
 
 def test_firefox_dom_number_word_matching() -> None:
-    from keyboard_killer.ipc.firefox_bridge import DOMCandidate, FirefoxDOMBridge
+    from keyless.ipc.firefox_bridge import DOMCandidate, FirefoxDOMBridge
 
     bridge = FirefoxDOMBridge()
     r1 = DOMCandidate(
@@ -1179,7 +1179,7 @@ def test_firefox_dom_number_word_matching() -> None:
 
 
 def test_desktop_atspi_matching_and_non_browser_routing() -> None:
-    from keyboard_killer.platform.linux.accessibility import (
+    from keyless.platform.linux.accessibility import (
         DesktopAccessibleNode,
         LinuxDesktopAccessibilityBridge,
     )
@@ -1270,8 +1270,8 @@ def test_desktop_atspi_matching_and_non_browser_routing() -> None:
 
 
 def test_command_splitter_and_compound_dispatch() -> None:
-    from keyboard_killer.ipc.firefox_bridge import DOMCandidate
-    from keyboard_killer.router.command_splitter import split_trailing_voice_command
+    from keyless.ipc.firefox_bridge import DOMCandidate
+    from keyless.router.command_splitter import split_trailing_voice_command
 
     assert split_trailing_voice_command("type rust vs zig into search bar and press enter") == [
         "type rust vs zig into search bar",
@@ -1341,7 +1341,7 @@ def test_command_splitter_and_compound_dispatch() -> None:
 
 
 def test_word_slicing_and_visual_icon_bank_and_save_icon(tmp_path) -> None:
-    from keyboard_killer.vision.ui_detector import (
+    from keyless.vision.ui_detector import (
         VisualIconBank,
         _slice_line_into_word_boxes,
     )
@@ -1385,13 +1385,13 @@ def test_word_slicing_and_visual_icon_bank_and_save_icon(tmp_path) -> None:
 
 
 def test_pose_invariant_rbf_and_online_gaze_learner(tmp_path) -> None:
-    from keyboard_killer.config import AppConfig
-    from keyboard_killer.vision.calibrator import (
+    from keyless.config import AppConfig
+    from keyless.vision.calibrator import (
         _RBF_METRIC_WEIGHTS,
         StereoGazeModel,
         expand_stereo_features,
     )
-    from keyboard_killer.vision.online_learner import OnlineGazeLearner
+    from keyless.vision.online_learner import OnlineGazeLearner
 
     # 1. Pose translation & roll weights are zeroed in _RBF_METRIC_WEIGHTS
     for idx in (6, 7, 8, 9, 16, 17, 18, 19):
@@ -1463,8 +1463,8 @@ def test_pose_invariant_rbf_and_online_gaze_learner(tmp_path) -> None:
 
 
 def test_wayland_cursor_sprite_diff_and_scroll_handler() -> None:
-    from keyboard_killer.input.click_harvest import WaylandCursorPositionResolver
-    from keyboard_killer.router.scroll_handler import parse_voice_scroll_command
+    from keyless.input.click_harvest import WaylandCursorPositionResolver
+    from keyless.router.scroll_handler import parse_voice_scroll_command
 
     # 1. Cursor sprite diff finds hardware cursor hotspot on synthetic frame pair
     resolver = WaylandCursorPositionResolver(allow_screenshot_diff=True)
@@ -1524,7 +1524,7 @@ def test_wayland_cursor_sprite_diff_and_scroll_handler() -> None:
 
 
 def test_pose_translation_stripping_on_load_recenter_and_gaze_warped_scroll(tmp_path) -> None:
-    from keyboard_killer.vision.calibrator import (
+    from keyless.vision.calibrator import (
         _POSE_TRANSLATION_EXPANDED_COLS,
         StereoGazeModel,
     )

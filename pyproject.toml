@@ -1,6 +1,6 @@
 [project]
-name = "keyboard-killer"
-version = "0.1.3"
+name = "keyless"
+version = "0.1.0"
 description = "Dual-camera stereo gaze tracking, pop-click detection, and voice/AI control for Linux Wayland"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -25,14 +25,14 @@ dependencies = [
 ]
 
 [project.scripts]
-keyboard-killer = "keyboard_killer.main:app"
+keyless = "keyless.main:app"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/keyboard_killer"]
+packages = ["src/keyless"]
 
 [dependency-groups]
 dev = [

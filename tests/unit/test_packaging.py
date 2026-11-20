@@ -10,18 +10,18 @@ from pathlib import Path
 
 import pytest
 
-from keyboard_killer.config.paths import HOME_ENV, default_paths
-from keyboard_killer.platform.base import CapabilityStatus, NotSupportedError, PermissionState
-from keyboard_killer.platform.capabilities import detect_capabilities
-from keyboard_killer.platform.macos.pointer import macOSPointerBackend
-from keyboard_killer.platform.windows.pointer import WindowsPointerBackend
+from keyless.config.paths import HOME_ENV, default_paths
+from keyless.platform.base import CapabilityStatus, NotSupportedError, PermissionState
+from keyless.platform.capabilities import detect_capabilities
+from keyless.platform.macos.pointer import macOSPointerBackend
+from keyless.platform.windows.pointer import WindowsPointerBackend
 
 ROOT = Path(__file__).resolve().parents[2]
 LINUX = ROOT / "packaging" / "linux"
 
 
 def test_udev_rule_matches_the_developer_helper() -> None:
-    rule = (LINUX / "udev" / "99-keyboard-killer-uinput.rules").read_text()
+    rule = (LINUX / "udev" / "99-keyless-uinput.rules").read_text()
     script = (ROOT / "scripts" / "setup_uinput_udev.sh").read_text()
     rule_line = next(line for line in rule.splitlines() if line.startswith("KERNEL"))
     assert 'KERNEL=="uinput"' in rule_line
@@ -31,23 +31,23 @@ def test_udev_rule_matches_the_developer_helper() -> None:
 
 def test_desktop_entry_launches_the_ui() -> None:
     parser = configparser.ConfigParser(interpolation=None)
-    parser.read(LINUX / "keyboard-killer.desktop")
+    parser.read(LINUX / "keyless.desktop")
     entry = parser["Desktop Entry"]
     assert entry["Type"] == "Application"
-    assert entry["Exec"] == "/usr/bin/keyboard-killer ui"
+    assert entry["Exec"] == "/usr/bin/keyless ui"
     assert entry["Terminal"] == "false"
     assert "Accessibility" in entry["Categories"]
 
 
 def test_systemd_unit_is_optional_and_user_scoped() -> None:
-    text = (LINUX / "systemd" / "keyboard-killer.service").read_text()
-    assert "ExecStart=/usr/bin/keyboard-killer run" in text
+    text = (LINUX / "systemd" / "keyless.service").read_text()
+    assert "ExecStart=/usr/bin/keyless run" in text
     assert "WantedBy=graphical-session.target" in text
     assert "system" not in text.lower().replace("systemd", "")
 
 
 def test_structure_only_deb_contains_rules_desktop_and_unit(tmp_path: Path) -> None:
-    output = tmp_path / "keyboard-killer.deb"
+    output = tmp_path / "keyless.deb"
     result = subprocess.run(
         [
             sys.executable,
@@ -75,16 +75,16 @@ def test_structure_only_deb_contains_rules_desktop_and_unit(tmp_path: Path) -> N
         names = control.getnames()
         assert "./control" in names
         control_text = control.extractfile("./control").read().decode()
-    assert "Package: keyboard-killer" in control_text
+    assert "Package: keyless" in control_text
     assert "Architecture: amd64" in control_text
 
     with tarfile.open(extract / "data.tar.gz") as data:
         names = set(data.getnames())
-    assert "./usr/bin/keyboard-killer" in names
-    assert "./usr/share/applications/keyboard-killer.desktop" in names
-    assert "./usr/lib/udev/rules.d/99-keyboard-killer-uinput.rules" in names
-    assert "./usr/lib/systemd/user/keyboard-killer.service" in names
-    assert "./usr/share/doc/keyboard-killer/README.Debian" in names
+    assert "./usr/bin/keyless" in names
+    assert "./usr/share/applications/keyless.desktop" in names
+    assert "./usr/lib/udev/rules.d/99-keyless-uinput.rules" in names
+    assert "./usr/lib/systemd/user/keyless.service" in names
+    assert "./usr/share/doc/keyless/README.Debian" in names
 
 
 def test_windows_and_macos_are_honest_capability_stubs(tmp_path: Path) -> None:
@@ -102,7 +102,7 @@ def test_windows_and_macos_are_honest_capability_stubs(tmp_path: Path) -> None:
 def test_paths_for_windows_and_macos_are_already_unit_testable(tmp_path: Path) -> None:
     windows = default_paths(env={"APPDATA": str(tmp_path / "R"), "LOCALAPPDATA": str(tmp_path / "L")}, platform_name="win32")
     macos = default_paths(env={}, platform_name="darwin", home=tmp_path)
-    assert windows.config_dir.name == "Keyboard-Killer"
+    assert windows.config_dir.name == "Keyless"
     assert windows.data_dir != windows.config_dir
     assert macos.config_dir == macos.data_dir
-    assert macos.logs_dir.name == "Keyboard-Killer"
+    assert macos.logs_dir.name == "Keyless"

@@ -2,7 +2,7 @@
 
 ## Contract
 
-`keyboard_killer.models.providers.base.Provider`:
+`keyless.models.providers.base.Provider`:
 
 ```python
 id, display_name, model, capabilities
@@ -53,7 +53,7 @@ still read as the env fallback and `backend="gemini"` maps to the
 
 ## Secrets
 
-`keyring` stores keys under service `keyboard-killer`, name = preset id. Env vars
+`keyring` stores keys under service `keyless`, name = preset id. Env vars
 (`OPENAI_API_KEY`, etc.) are the fallback. Keys never enter `settings.json`,
 logs, or `doctor --json`.
 
@@ -76,11 +76,11 @@ logs, or `doctor --json`.
 ## CLI
 
 ```bash
-uv run keyboard-killer providers presets
-uv run keyboard-killer providers acp
-uv run keyboard-killer providers status
-uv run keyboard-killer providers set-key openai
-uv run keyboard-killer providers delete-key openai
+uv run keyless providers presets
+uv run keyless providers acp
+uv run keyless providers status
+uv run keyless providers set-key openai
+uv run keyless providers delete-key openai
 ```
 
 `providers status` calls each configured provider's `status()`; on a machine

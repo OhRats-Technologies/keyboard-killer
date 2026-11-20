@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Docs | Keyboard-Killer</title>
-  <meta name="description" content="Install, hardware requirements, first-run setup, CLI diagnostics, privacy, and platform status for Keyboard-Killer." />
+  <title>Docs | Keyless</title>
+  <meta name="description" content="Install, hardware requirements, first-run setup, CLI diagnostics, privacy, and platform status for Keyless." />
   <link rel="icon" type="image/svg+xml" href="/icon.svg?v=2" />
   <script src="https://assets.ohrats.party/v1/theme.js"></script>
   <script src="https://assets.ohrats.party/v1/menu.js" defer></script>
@@ -61,9 +61,9 @@
   <nav class="site-nav">
     <div class="nav-container">
       <div class="nav-left">
-        <a class="logo" href="/" aria-label="Keyboard-Killer home">
-          <img class="logo-image" src="/icon.svg?v=2" alt="Keyboard-Killer" />
-          <span class="logo-text">Keyboard-Killer</span>
+        <a class="logo" href="/" aria-label="Keyless home">
+          <img class="logo-image" src="/icon.svg?v=2" alt="Keyless" />
+          <span class="logo-text">Keyless</span>
         </a>
         <div class="desktop-menu">
           <a href="/docs.html" class="menu-item nav-highlight" aria-current="page">
@@ -75,10 +75,10 @@
 
       <div class="cta-buttons">
         <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme"></button>
-        <a class="github-link" href="https://github.com/OhRats-Technologies/keyboard-killer" aria-label="GitHub">
+        <a class="github-link" href="https://github.com/OhRats-Technologies/keyless" aria-label="GitHub">
           <span class="github-icon" aria-hidden="true"></span>
         </a>
-        <a class="or-button" href="https://github.com/OhRats-Technologies/keyboard-killer/releases/latest">Download</a>
+        <a class="or-button" href="https://github.com/OhRats-Technologies/keyless/releases/latest">Download</a>
       </div>
 
       <button class="mobile-menu-btn" data-menu-toggle aria-controls="mobile-menu" aria-expanded="false" aria-label="Open menu">
@@ -92,8 +92,8 @@
 
     <div class="mobile-menu" id="mobile-menu">
       <a class="mobile-menu-link" href="/docs.html">01 Docs</a>
-      <a class="mobile-menu-link" href="https://github.com/OhRats-Technologies/keyboard-killer">GitHub</a>
-      <a class="mobile-menu-link" href="https://github.com/OhRats-Technologies/keyboard-killer/releases/latest">Download</a>
+      <a class="mobile-menu-link" href="https://github.com/OhRats-Technologies/keyless">GitHub</a>
+      <a class="mobile-menu-link" href="https://github.com/OhRats-Technologies/keyless/releases/latest">Download</a>
       <div class="mobile-divider"></div>
       <div class="mobile-theme-row">
         <span class="mobile-theme-label">Theme</span>
@@ -114,13 +114,13 @@
     </aside>
 
     <article class="or-reading">
-      <h1>Keyboard-Killer Documentation</h1>
+      <h1>Keyless Documentation</h1>
       <p class="or-lede">Installation, hardware setup, local speech models, and current platform status for Linux.</p>
 
       <h2 id="install">Install</h2>
       <p>Run the installer script. On Debian and Ubuntu it installs the self-contained <code>.deb</code> package via <code>apt</code>; on other Linux distributions it installs the AppImage for your user. Both verify published <code>SHA256SUMS</code>.</p>
-      <pre><code>curl -fsSL https://keyboard-killer.ohrats.party/install.sh | sh</code></pre>
-      <p>The <code>.deb</code> installs under <code>/opt/keyboard-killer</code>, adds the <code>/dev/uinput</code> udev rule, registers a desktop entry, and includes an optional systemd user unit.</p>
+      <pre><code>curl -fsSL https://keyless.ohrats.party/install.sh | sh</code></pre>
+      <p>The <code>.deb</code> installs under <code>/opt/keyless</code>, adds the <code>/dev/uinput</code> udev rule, registers a desktop entry, and includes an optional systemd user unit.</p>
 
       <h2 id="requirements">Requirements</h2>
       <ul>
@@ -130,7 +130,7 @@
       </ul>
 
       <h2 id="first-run">First run</h2>
-      <p>Launch <strong>Keyboard-Killer</strong> from your application menu. First run walks through a resumable guided setup:</p>
+      <p>Launch <strong>Keyless</strong> from your application menu. First run walks through a resumable guided setup:</p>
       <ol>
         <li>Permissions (camera, microphone, input devices, optional screen capture)</li>
         <li>Camera selection using stable <code>/dev/v4l/by-id</code> paths</li>
@@ -141,10 +141,10 @@
 
       <h2 id="cli">CLI &amp; diagnostics</h2>
       <p>Use the CLI to inspect hardware readiness or dry-run without emitting input events:</p>
-      <pre><code>keyboard-killer doctor
-keyboard-killer doctor --json
-keyboard-killer models status
-keyboard-killer run --dry-run</code></pre>
+      <pre><code>keyless doctor
+keyless doctor --json
+keyless models status
+keyless run --dry-run</code></pre>
 
       <h2 id="privacy">Privacy &amp; models</h2>
       <p>Camera frames, speech recognition, and command history stay on your machine. Network access is only used when downloading pinned model weights or if you explicitly configure an external AI provider.</p>
@@ -174,7 +174,7 @@ keyboard-killer run --dry-run</code></pre>
         <div class="footer-column">
           <span class="footer-column-label">Tools</span>
           <a href="https://wakebar.ohrats.party/" class="footer-link">WakeBar</a>
-          <a href="https://keyboard-killer.ohrats.party/" class="footer-link">Keyboard-Killer</a>
+          <a href="https://keyless.ohrats.party/" class="footer-link">Keyless</a>
           <a href="https://rc.ohrats.party/" class="footer-link">RC</a>
           <a href="https://github.com/OhRats-Technologies/steward" class="footer-link">Steward</a>
           <a href="https://learn.ohrats.party/" class="footer-link">Learn</a>

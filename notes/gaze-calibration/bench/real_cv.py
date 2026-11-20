@@ -3,11 +3,11 @@ from __future__ import annotations
 import sys, time
 from pathlib import Path
 import numpy as np
-from keyboard_killer.platform.base import DisplayLayout, MonitorInfo
-from keyboard_killer.vision.calibrator import StereoGazeModel
-from keyboard_killer.vision.geo_gaze import GeoGazeModel, MonitorSpec
+from keyless.platform.base import DisplayLayout, MonitorInfo
+from keyless.vision.calibrator import StereoGazeModel
+from keyless.vision.geo_gaze import GeoGazeModel, MonitorSpec
 
-path = Path(sys.argv[1] if len(sys.argv) > 1 else Path.home() / ".config/keyboard-killer/calibration/calib_dataset.npz")
+path = Path(sys.argv[1] if len(sys.argv) > 1 else Path.home() / ".config/keyless/calibration/calib_dataset.npz")
 d = np.load(path, allow_pickle=True)
 X, Y, G = d["X"], d["Y"], d["groups"]
 specs = [MonitorSpec("DP-2", 0, 0, 1920, 1080, 521, 293), MonitorSpec("HDMI-A-1", 1920, 0, 1920, 1080, 598, 336)]

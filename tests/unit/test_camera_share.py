@@ -7,7 +7,7 @@ import io
 import numpy as np
 import pytest
 
-from keyboard_killer.platform.linux import pipewire
+from keyless.platform.linux import pipewire
 
 
 def test_pipewire_capture_reads_fixed_bgr_frames(monkeypatch) -> None:

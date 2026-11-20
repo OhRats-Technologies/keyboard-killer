@@ -6,16 +6,16 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from keyboard_killer.audio.quick_test import SpeechTestResult
-from keyboard_killer.config.paths import HOME_ENV, default_paths
-from keyboard_killer.config.schema import AppConfig
-from keyboard_killer.ui.gaze_source import GazeSample
-from keyboard_killer.ui.screen_cursor import CursorStatus
-from keyboard_killer.ui.theme.tokens import ThemeName
+from keyless.audio.quick_test import SpeechTestResult
+from keyless.config.paths import HOME_ENV, default_paths
+from keyless.config.schema import AppConfig
+from keyless.ui.gaze_source import GazeSample
+from keyless.ui.screen_cursor import CursorStatus
+from keyless.ui.theme.tokens import ThemeName
 
 
 def _window(tmp_path):
-    from keyboard_killer.ui.app import MainWindow
+    from keyless.ui.app import MainWindow
 
     paths = default_paths(env={HOME_ENV: str(tmp_path)}, platform_name="linux")
     paths.ensure_directories()
@@ -103,7 +103,7 @@ def test_home_screen_cursor_toggle_uses_the_overlay_controller(qapp, tmp_path) -
 
 
 def test_settings_panel_renders_speech_test_and_toggles_pipewire_sharing(qapp, tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr("keyboard_killer.ui.settings.window.pipewire_available", lambda: True)
+    monkeypatch.setattr("keyless.ui.settings.window.pipewire_available", lambda: True)
     window = _window(tmp_path)
     window.config.camera_mode = "mono"
     window.config.cam1_by_id = "/dev/v4l/by-id/cam-a"

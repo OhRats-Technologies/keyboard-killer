@@ -12,19 +12,19 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtGui import QImage
 
-from keyboard_killer.config.paths import HOME_ENV, default_paths
-from keyboard_killer.config.schema import AppConfig
-from keyboard_killer.platform.linux.cameras import friendly_camera_name
-from keyboard_killer.ui.components import friendly_key_name
-from keyboard_killer.ui.history.db import ActionRecord, HistoryStore
-from keyboard_killer.ui.history.window import HistoryPanel
-from keyboard_killer.ui.onboarding.flow import OnboardingFlow, OnboardingStep
-from keyboard_killer.ui.onboarding.steps import DevicesPage, OnboardingWindow
-from keyboard_killer.ui.overlay.base import OverlayMode, OverlayState, OverlayUpdate
-from keyboard_killer.ui.overlay.linux import TrayToastOverlay, overlay_mode
-from keyboard_killer.ui.session import NullController
-from keyboard_killer.ui.settings.window import SettingsPanel
-from keyboard_killer.ui.theme.tokens import ThemeName
+from keyless.config.paths import HOME_ENV, default_paths
+from keyless.config.schema import AppConfig
+from keyless.platform.linux.cameras import friendly_camera_name
+from keyless.ui.components import friendly_key_name
+from keyless.ui.history.db import ActionRecord, HistoryStore
+from keyless.ui.history.window import HistoryPanel
+from keyless.ui.onboarding.flow import OnboardingFlow, OnboardingStep
+from keyless.ui.onboarding.steps import DevicesPage, OnboardingWindow
+from keyless.ui.overlay.base import OverlayMode, OverlayState, OverlayUpdate
+from keyless.ui.overlay.linux import TrayToastOverlay, overlay_mode
+from keyless.ui.session import NullController
+from keyless.ui.settings.window import SettingsPanel
+from keyless.ui.theme.tokens import ThemeName
 
 GOLDENS = Path(__file__).with_name("goldens")
 
@@ -109,14 +109,14 @@ def test_onboarding_window_resumes_and_reaches_ready(qapp, tmp_path: Path, monke
     paths = _paths(tmp_path)
     paths.calibration_path.write_text('{"rmse_x": 12.0}\n')
     monkeypatch.setattr(
-        "keyboard_killer.ui.onboarding.steps.stt_report",
+        "keyless.ui.onboarding.steps.stt_report",
         lambda *_a, **_k: {
             "selected": "parakeet",
             "parakeet": {"state": "ready", "path": str(paths.models_dir)},
         },
     )
     monkeypatch.setattr(
-        "keyboard_killer.ui.onboarding.steps.discover_v4l_by_id",
+        "keyless.ui.onboarding.steps.discover_v4l_by_id",
         lambda: ["/dev/v4l/by-id/usb-Logitech_Webcam-video-index0"],
     )
     flow = OnboardingFlow(paths)
@@ -147,7 +147,7 @@ def test_devices_page_progressive_enhancement_single_vs_dual_camera(qapp, tmp_pa
     paths = _paths(tmp_path)
     # 1 camera: stereo controls, camera 2, and swap must stay hidden
     monkeypatch.setattr(
-        "keyboard_killer.ui.onboarding.steps.discover_v4l_by_id",
+        "keyless.ui.onboarding.steps.discover_v4l_by_id",
         lambda: ["/dev/v4l/by-id/usb-Cam_One-video-index0"],
     )
     page1 = DevicesPage(AppConfig(), paths, report_provider=_report, enable_previews=False)
@@ -161,7 +161,7 @@ def test_devices_page_progressive_enhancement_single_vs_dual_camera(qapp, tmp_pa
 
     # 2 cameras + denied permission: stereo controls and permission card appear
     monkeypatch.setattr(
-        "keyboard_killer.ui.onboarding.steps.discover_v4l_by_id",
+        "keyless.ui.onboarding.steps.discover_v4l_by_id",
         lambda: ["/dev/v4l/by-id/usb-Cam_One-video-index0", "/dev/v4l/by-id/usb-Cam_Two-video-index0"],
     )
     page2 = DevicesPage(AppConfig(), paths, report_provider=lambda: _report(denied=True), enable_previews=False)
@@ -230,7 +230,7 @@ def test_overlay_fallback_is_honest_on_gnome_wayland() -> None:
 
 
 def test_main_window_three_view_navigation_and_inline_setup(qapp, tmp_path: Path) -> None:
-    from keyboard_killer.ui.app import MainWindow
+    from keyless.ui.app import MainWindow
 
     paths = _paths(tmp_path)
     window = MainWindow(
@@ -262,7 +262,7 @@ def test_main_window_three_view_navigation_and_inline_setup(qapp, tmp_path: Path
 
 
 def test_main_window_light_and_dark_goldens(qapp, tmp_path: Path) -> None:
-    from keyboard_killer.ui.app import MainWindow
+    from keyless.ui.app import MainWindow
 
     paths = _paths(tmp_path)
     for theme in (ThemeName.LIGHT, ThemeName.DARK):
@@ -284,7 +284,7 @@ def test_main_window_light_and_dark_goldens(qapp, tmp_path: Path) -> None:
 
 
 def test_onboarding_welcome_light_and_dark_goldens(qapp, tmp_path: Path) -> None:
-    from keyboard_killer.ui.theme.tokens import stylesheet, tokens_for
+    from keyless.ui.theme.tokens import stylesheet, tokens_for
 
     paths = _paths(tmp_path)
     flow = OnboardingFlow(paths)
@@ -307,10 +307,10 @@ def test_onboarding_welcome_light_and_dark_goldens(qapp, tmp_path: Path) -> None
 
 
 def test_settings_panel_lists_and_saves_a_microphone(qapp, tmp_path: Path, monkeypatch) -> None:
-    from keyboard_killer.audio.quick_test import InputDevice
+    from keyless.audio.quick_test import InputDevice
 
     monkeypatch.setattr(
-        "keyboard_killer.ui.settings.window.input_devices",
+        "keyless.ui.settings.window.input_devices",
         lambda: [InputDevice(8, "Razer Seiren Mini", 1), InputDevice(7, "Webcam", 1)],
     )
     paths = _paths(tmp_path)
@@ -324,10 +324,10 @@ def test_settings_panel_lists_and_saves_a_microphone(qapp, tmp_path: Path, monke
 
 
 def test_settings_mic_check_reports_signal(qapp, tmp_path: Path, monkeypatch) -> None:
-    from keyboard_killer.audio.quick_test import MicLevel
+    from keyless.audio.quick_test import MicLevel
 
     monkeypatch.setattr(
-        "keyboard_killer.ui.settings.window.check_microphone",
+        "keyless.ui.settings.window.check_microphone",
         lambda device=None: MicLevel(peak=0.21, rms=0.05, seconds=1.5),
     )
     paths = _paths(tmp_path)
@@ -343,7 +343,7 @@ def test_settings_mic_check_reports_signal(qapp, tmp_path: Path, monkeypatch) ->
 
 
 def test_devices_page_reports_mic_and_transcript(qapp, tmp_path: Path) -> None:
-    from keyboard_killer.audio.quick_test import MicLevel, SpeechTestResult
+    from keyless.audio.quick_test import MicLevel, SpeechTestResult
 
     paths = _paths(tmp_path)
     page = DevicesPage(AppConfig(camera_mode="mono"), paths, report_provider=_report, enable_previews=False)

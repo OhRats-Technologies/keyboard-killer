@@ -6,9 +6,9 @@ import json
 import sys
 from pathlib import Path
 
-from keyboard_killer.models.providers.acp import AcpClient, AcpProvider
-from keyboard_killer.models.providers.acp_registry import AcpAgentSpec
-from keyboard_killer.models.providers.base import ProviderState
+from keyless.models.providers.acp import AcpClient, AcpProvider
+from keyless.models.providers.acp_registry import AcpAgentSpec
+from keyless.models.providers.base import ProviderState
 
 FAKE_AGENT = Path(__file__).parent.parent / "fixtures" / "fake_acp_agent.py"
 

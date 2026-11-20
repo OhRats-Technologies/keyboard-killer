@@ -1,15 +1,15 @@
 #!/bin/sh
-# Fast local installer for a cloned Keyboard-Killer repository.
+# Fast local installer for a cloned Keyless repository.
 # Installs an editable (or wheel) environment in .venv and wires the desktop
-# entry, icons, and ~/.local/bin/keyboard-killer in ~1 second (no AppImage repack).
+# entry, icons, and ~/.local/bin/keyless in ~1 second (no AppImage repack).
 set -eu
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BIN_DIR="${KEYBOARD_KILLER_BIN_DIR:-${HOME}/.local/bin}"
+BIN_DIR="${KEYLESS_BIN_DIR:-${HOME}/.local/bin}"
 DATA_HOME="${XDG_DATA_HOME:-${HOME}/.local/share}"
 DESKTOP_DIR="${DATA_HOME}/applications"
 ICON_DIR="${DATA_HOME}/icons/hicolor"
-VENV_DIR="${KEYBOARD_KILLER_VENV_DIR:-${REPO_ROOT}/.venv}"
+VENV_DIR="${KEYLESS_VENV_DIR:-${REPO_ROOT}/.venv}"
 
 EDITABLE=1
 OPEN_AFTER=0
@@ -25,13 +25,13 @@ for arg in "$@"; do
       cat <<'EOF'
 Usage: ./scripts/install.sh [--editable | --wheel] [--open] [--skip-sync]
 
-Installs Keyboard-Killer locally from this repository into ~/.local/bin and
+Installs Keyless locally from this repository into ~/.local/bin and
 your desktop application menu.
 
 Options:
   --editable   Install in editable mode (default; repo edits apply immediately)
   --wheel      Install as a standard wheel into .venv
-  --open       Launch the Keyboard-Killer UI after installing
+  --open       Launch the Keyless UI after installing
   --skip-sync  Skip uv sync (reuse an already-prepared .venv)
 EOF
       exit 0
@@ -44,7 +44,7 @@ EOF
 done
 
 command -v uv >/dev/null 2>&1 || {
-  echo "keyboard-killer: 'uv' is required (https://docs.astral.sh/uv/)" >&2
+  echo "keyless: 'uv' is required (https://docs.astral.sh/uv/)" >&2
   exit 1
 }
 
@@ -68,31 +68,31 @@ fi
 
 EXEC_PY="${VENV_DIR}/bin/python"
 [ -x "$EXEC_PY" ] || {
-  echo "keyboard-killer: python not found at $EXEC_PY" >&2
+  echo "keyless: python not found at $EXEC_PY" >&2
   exit 1
 }
 
 mkdir -p "$BIN_DIR" "$DESKTOP_DIR" "${ICON_DIR}/scalable/apps" "${ICON_DIR}/256x256/apps"
 
-cat > "${BIN_DIR}/keyboard-killer" <<EOF
+cat > "${BIN_DIR}/keyless" <<EOF
 #!/bin/sh
-exec "${EXEC_PY}" -m keyboard_killer.main "\$@"
+exec "${EXEC_PY}" -m keyless.main "\$@"
 EOF
-chmod 0755 "${BIN_DIR}/keyboard-killer"
+chmod 0755 "${BIN_DIR}/keyless"
 
-cat > "${DESKTOP_DIR}/keyboard-killer.desktop" <<EOF
+cat > "${DESKTOP_DIR}/keyless.desktop" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Keyboard-Killer
+Name=Keyless
 Comment=Gaze and voice control
-Exec=${BIN_DIR}/keyboard-killer ui
-Icon=keyboard-killer
+Exec=${BIN_DIR}/keyless ui
+Icon=keyless
 Terminal=false
 Categories=Utility;Accessibility;
 EOF
 
-cp "${REPO_ROOT}/packaging/linux/keyboard-killer.svg" "${ICON_DIR}/scalable/apps/keyboard-killer.svg"
-cp "${REPO_ROOT}/packaging/linux/keyboard-killer.png" "${ICON_DIR}/256x256/apps/keyboard-killer.png"
+cp "${REPO_ROOT}/packaging/linux/keyless.svg" "${ICON_DIR}/scalable/apps/keyless.svg"
+cp "${REPO_ROOT}/packaging/linux/keyless.png" "${ICON_DIR}/256x256/apps/keyless.png"
 
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database -q "$DESKTOP_DIR" 2>/dev/null || true
@@ -101,12 +101,12 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
   gtk-update-icon-cache -q "$ICON_DIR" 2>/dev/null || true
 fi
 
-echo "Installed Keyboard-Killer -> ${BIN_DIR}/keyboard-killer"
-echo "Desktop entry -> ${DESKTOP_DIR}/keyboard-killer.desktop"
+echo "Installed Keyless -> ${BIN_DIR}/keyless"
+echo "Desktop entry -> ${DESKTOP_DIR}/keyless.desktop"
 
 if [ "$OPEN_AFTER" -eq 1 ]; then
-  pkill -f "python.*keyboard_killer\.main" 2>/dev/null || true
+  pkill -f "python.*keyless\.main" 2>/dev/null || true
   sleep 0.3
-  nohup "${BIN_DIR}/keyboard-killer" ui >/tmp/keyboard-killer-ui.log 2>&1 &
-  echo "Launched Keyboard-Killer UI (PID $!)"
+  nohup "${BIN_DIR}/keyless" ui >/tmp/keyless-ui.log 2>&1 &
+  echo "Launched Keyless UI (PID $!)"
 fi

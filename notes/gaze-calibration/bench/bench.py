@@ -26,11 +26,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from gazesim import Event, Subject, World, angular_errors, make_rig, run_calibration, run_session  # noqa: E402
 
-from keyboard_killer.config import AppConfig  # noqa: E402
-from keyboard_killer.platform.base import DisplayLayout, MonitorInfo  # noqa: E402
-from keyboard_killer.vision.calibrator import StereoGazeModel  # noqa: E402
-from keyboard_killer.vision.geo_gaze import FixationSegmenter, GeoGazeModel, GeoGazeTracker  # noqa: E402
-from keyboard_killer.vision.online_learner import OnlineGazeLearner  # noqa: E402
+from keyless.config import AppConfig  # noqa: E402
+from keyless.platform.base import DisplayLayout, MonitorInfo  # noqa: E402
+from keyless.vision.calibrator import StereoGazeModel  # noqa: E402
+from keyless.vision.geo_gaze import FixationSegmenter, GeoGazeModel, GeoGazeTracker  # noqa: E402
+from keyless.vision.online_learner import OnlineGazeLearner  # noqa: E402
 
 HEAD0 = {"triple": np.array([29.9, 12.0, -60.0])}
 
