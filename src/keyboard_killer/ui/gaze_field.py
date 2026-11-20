@@ -238,13 +238,14 @@ class GazeField(QWidget):
                 f"{'BLINK' if sample.blinking else 'OPEN'}  {sample.age_s * 1000:4.0f} MS"
             )
         else:
-            detail = "DEMO PATH · NO LIVE GAZE"
-        painter.setPen(QColor(tokens.muted))
-        painter.drawText(
-            QRectF(12, self.height() - 18, self.width() - 24, 14),
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            detail,
-        )
+            detail = ""
+        if detail:
+            painter.setPen(QColor(tokens.muted))
+            painter.drawText(
+                QRectF(12, self.height() - 18, self.width() - 24, 14),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                detail,
+            )
         painter.end()
 
     def shutdown(self) -> None:

@@ -130,7 +130,7 @@ class HomePanel(QWidget):
             source_size=(layout_info.total_width, layout_info.total_height),
             live_region=self.live_region,
         )
-        self.gaze_field.setMinimumHeight(190)
+        self.gaze_field.setMinimumHeight(175)
         instrument.layout.addWidget(self.gaze_field)
         self.rows = {}
         for key, label in (
@@ -153,7 +153,7 @@ class HomePanel(QWidget):
         self.cursor_button.setCheckable(True)
         self.cursor_button.clicked.connect(self._toggle_cursor)
         instrument.layout.addWidget(self.cursor_button)
-        self.cursor_note = QLabel("A click-through cursor moves across the desktop.")
+        self.cursor_note = QLabel("Click-through cursor across the desktop.")
         self.cursor_note.setObjectName("Mono")
         self.cursor_note.setWordWrap(True)
         instrument.layout.addWidget(self.cursor_note)
@@ -162,7 +162,7 @@ class HomePanel(QWidget):
         self.transcript_button.setCheckable(True)
         self.transcript_button.clicked.connect(self._toggle_transcript)
         instrument.layout.addWidget(self.transcript_button)
-        self.transcript_note = QLabel("Parakeet text at the bottom of the screen.")
+        self.transcript_note = QLabel("Parakeet at the screen bottom.")
         self.transcript_note.setObjectName("Mono")
         self.transcript_note.setWordWrap(True)
         instrument.layout.addWidget(self.transcript_note)
@@ -282,7 +282,7 @@ class HomePanel(QWidget):
         self.cursor_button.setText("HIDE SCREEN CURSOR" if running else "SHOW SCREEN CURSOR")
         if not running:
             if not self.window.screen_cursor.error:
-                self.cursor_note.setText("A click-through cursor moves across the desktop.")
+                self.cursor_note.setText("Click-through cursor across the desktop.")
             return
         mode = self.gaze_field.mode
         if mode == "live":
@@ -290,7 +290,7 @@ class HomePanel(QWidget):
         elif mode == "no-face":
             self.cursor_note.setText("ON · LIVE, NO FACE IN VIEW")
         else:
-            self.cursor_note.setText("ON · DEMO PATH (NO VISION DATA)")
+            self.cursor_note.setText("ON · DEMO PATH")
 
     def _on_gaze_mode(self, _mode: str) -> None:
         if self.window.screen_cursor.running:
@@ -322,11 +322,11 @@ class HomePanel(QWidget):
             "HIDE TRANSCRIPT" if running else "SHOW TRANSCRIPT"
         )
         if running:
-            self.transcript_note.setText("ON · WAITING FOR THE NEXT TRANSCRIPT")
+            self.transcript_note.setText("ON · WAITING FOR SPEECH")
         elif self.window.transcript_overlay.error:
             self.transcript_note.setText(self.window.transcript_overlay.error)
         else:
-            self.transcript_note.setText("Parakeet text at the bottom of the screen.")
+            self.transcript_note.setText("Parakeet at the screen bottom.")
 
     def poll_state(self) -> None:
         state = self.window.controller.status.state
