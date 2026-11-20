@@ -254,7 +254,8 @@ def build_appimage(*, output: Path | None = None) -> Path:
     apprun.write_text(
         "#!/bin/sh\n"
         "HERE=$(dirname \"$(readlink -f \"$0\")\")\n"
-        "exec \"$HERE/venv/bin/python\" -m keyboard_killer.main ui \"$@\"\n"
+        "if [ \"$#\" -eq 0 ]; then set -- ui; fi\n"
+        "exec \"$HERE/venv/bin/python\" -m keyboard_killer.main \"$@\"\n"
     )
     apprun.chmod(0o755)
     run(["chmod", "-R", "a+rX", str(appdir)])

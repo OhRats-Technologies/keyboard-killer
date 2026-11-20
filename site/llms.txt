@@ -1,0 +1,8 @@
+# Keyboard-Killer
+
+Local-first gaze and voice control for the Linux desktop.
+
+- Install (Linux): curl -fsSL https://keyboard-killer.ohrats.party/install.sh | sh
+- Source: https://github.com/OhRats-Technologies/keyboard-killer
+- Docs: https://github.com/OhRats-Technologies/keyboard-killer/tree/main/docs
+- Status: Linux implemented; macOS and Windows are capability stubs.

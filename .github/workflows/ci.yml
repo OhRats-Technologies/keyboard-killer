@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.5"
+          enable-cache: true
+      - name: Install Linux runtime libraries for Qt and audio
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            build-essential libportaudio2 libgl1 libegl1 libxkbcommon0 \
+            libxkbcommon-x11-0 libdbus-1-3 libxcb-cursor0 libxcb-xinerama0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 \
+            libxcb-shape0 libxcb-xfixes0 libxcb-sync1 libxcb-xkb1 libgomp1
+      - name: Sync dependencies
+        run: uv sync --dev --python 3.13
+      - name: Run tests
+        run: uv run --python 3.13 pytest -q
+      - name: Compile all modules
+        run: uv run --python 3.13 python -m compileall -q src
+
+  package-structure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.5"
+          enable-cache: true
+      - name: Validate version and packaging structure
+        run: |
+          ./scripts/check-version.sh 0.1.0
+          uv run --python 3.13 python packaging/linux/build_deb.py --no-venv --output /tmp/keyboard-killer-structure.deb
+          ar t /tmp/keyboard-killer-structure.deb
+          ar p /tmp/keyboard-killer-structure.deb data.tar.gz > /tmp/keyboard-killer-data.tar.gz
+          tar -tzf /tmp/keyboard-killer-data.tar.gz | grep -E 'usr/bin/keyboard-killer|udev/rules|systemd/user|applications'

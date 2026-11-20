@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#07080a"/>
+  <g fill="none" stroke="#222831">
+    <path d="M0 70h1200M0 140h1200M0 210h1200M0 280h1200M0 350h1200M0 420h1200M0 490h1200M0 560h1200"/>
+    <path d="M70 0v630M140 0v630M210 0v630M280 0v630M350 0v630M420 0v630M490 0v630M560 0v630M630 0v630M700 0v630M770 0v630M840 0v630M910 0v630M980 0v630M1050 0v630M1120 0v630"/>
+  </g>
+  <rect x="78" y="76" width="84" height="84" rx="20" fill="#2f6fed"/>
+  <path d="M100 100v38M100 119l20-19M100 119l21 19" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="78" y="330" fill="#f3f0e8" font-family="Inter, sans-serif" font-size="118" font-weight="750" letter-spacing="-6">Look. Speak.</text>
+  <text x="78" y="450" fill="#9db0ff" font-family="Inter, sans-serif" font-size="118" font-weight="750" letter-spacing="-6">It clicks.</text>
+  <text x="82" y="520" fill="#9aa2af" font-family="monospace" font-size="24">Local gaze + voice for Linux</text>
+</svg>
