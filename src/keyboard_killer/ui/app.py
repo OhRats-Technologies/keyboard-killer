@@ -34,8 +34,10 @@ from keyboard_killer.config.schema import AppConfig
 from keyboard_killer.diagnostics.doctor import collect_doctor, format_text
 from keyboard_killer.platform.linux.cameras import list_cameras, resolve_camera_config
 from keyboard_killer.platform.linux.display import get_display_layout
+from keyboard_killer.platform.linux.pipewire import pipewire_available, pipewire_note
 from keyboard_killer.ui.components import Card, eyebrow, mono, status as status_label
 from keyboard_killer.ui.gaze_field import GazeField
+from keyboard_killer.ui.gaze_region import calibration_region
 from keyboard_killer.ui.history.db import HistoryStore
 from keyboard_killer.ui.history.window import HistoryPanel
 from keyboard_killer.ui.onboarding.flow import OnboardingFlow
@@ -121,9 +123,11 @@ class HomePanel(QWidget):
         instrument.setMaximumWidth(390)
         instrument.layout.addWidget(eyebrow("GAZE INSTRUMENT"))
         layout_info = window.display_layout
+        self.live_region = calibration_region(window.paths.calibration_path, layout_info)
         self.gaze_field = GazeField(
             window,
             source_size=(layout_info.total_width, layout_info.total_height),
+            live_region=self.live_region,
         )
         self.gaze_field.setMinimumHeight(190)
         instrument.layout.addWidget(self.gaze_field)
@@ -216,7 +220,13 @@ class HomePanel(QWidget):
         )
         self.rows["cameras"].setText(f"{mode.upper()} · {'2' if cam2 else '1'}")
         calibrated = self.window.paths.calibration_path.exists()
-        self.rows["gaze"].setText("CALIBRATED" if calibrated else "NOT CALIBRATED")
+        if calibrated:
+            connector = self.live_region.connector
+            if connector in ("", "DEFAULT"):
+                connector = self.window.display_layout.primary.connector
+            self.rows["gaze"].setText(f"CALIBRATED · {connector}")
+        else:
+            self.rows["gaze"].setText("NOT CALIBRATED")
         speech = stt_report(self.window.config, paths=self.window.paths)
         self.rows["speech"].setText(
             "READY" if speech.get("selected") == "parakeet" else "DOWNLOAD NEEDED"
@@ -229,7 +239,7 @@ class HomePanel(QWidget):
 
     def _toggle_cursor(self, checked: bool) -> None:
         if checked:
-            status = self.window.screen_cursor.start()
+            status = self.window.screen_cursor.start(self.live_region)
             if not status.running:
                 self.cursor_button.blockSignals(True)
                 self.cursor_button.setChecked(False)
@@ -349,6 +359,18 @@ class CamerasPanel(QWidget):
         self.body = QLabel("")
         self.body.setWordWrap(True)
         self.card.layout.addWidget(self.body)
+
+        sharing = Card()
+        sharing.layout.addWidget(eyebrow("CAMERA SHARING"))
+        self.share_body = QLabel("")
+        self.share_body.setObjectName("Muted")
+        self.share_body.setWordWrap(True)
+        sharing.layout.addWidget(self.share_body)
+        self.share_button = QPushButton("SHARE CAMERA WITH OTHER APPS")
+        self.share_button.setCheckable(True)
+        self.share_button.clicked.connect(self._toggle_sharing)
+        sharing.layout.addWidget(self.share_button, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(sharing)
         layout.addStretch(1)
         self.refresh()
 
@@ -367,6 +389,46 @@ class CamerasPanel(QWidget):
         lines += [f"{camera.name}\n  {camera.path}" for camera in cameras] or ["No stable cameras found."]
         lines += ["", f"Camera 1  {cam1 or 'not set'}", f"Camera 2  {cam2 or 'not used in mono mode'}"]
         self.body.setText("\n".join(lines))
+
+        available = pipewire_available()
+        shared = self.window.config.camera_backend == "pipewire"
+        usable = available and mode == "mono"
+        self.share_button.blockSignals(True)
+        self.share_button.setChecked(shared)
+        self.share_button.blockSignals(False)
+        self.share_button.setEnabled(usable)
+        self.share_button.setText(
+            "PIPEWIRE SHARING ON" if shared else "SHARE CAMERA WITH OTHER APPS"
+        )
+        if not available:
+            self.share_body.setText(pipewire_note())
+        elif mode != "mono":
+            self.share_body.setText(
+                "Sharing uses the PipeWire default source and is available in mono mode. "
+                "Switch camera mode to mono, or keep V4L2 for stereo."
+            )
+        elif shared:
+            self.share_body.setText(
+                "PipeWire sharing is on. The app no longer holds /dev/videoN, so other "
+                "camera clients can request it through the portal. The portal provides "
+                "640x480 and exposure locks are unavailable; check that your eyes are "
+                "inside the frame and recalibrate in this mode for the best accuracy."
+            )
+        else:
+            self.share_body.setText(
+                "The V4L2 backend owns the camera exclusively. Turn on sharing to capture "
+                "through PipeWire so other camera clients can request it through the portal. "
+                "Mono only; 640x480; no manual exposure."
+            )
+
+    def _toggle_sharing(self, checked: bool) -> None:
+        self.window.config.camera_backend = "pipewire" if checked else "v4l2"
+        self.window.config.save(self.window.paths.settings_path)
+        if self.window.controller.status.state is SessionState.LISTENING:
+            self.window.controller.pause()
+            self.window.controller.start()
+            self.window.home.poll_state()
+        self.refresh()
 
 
 class CalibrationPanel(QWidget):

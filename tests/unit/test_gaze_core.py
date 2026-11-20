@@ -78,3 +78,92 @@ def test_run_speech_test_uses_the_local_engine(monkeypatch) -> None:
     assert result.peak == pytest.approx(0.2)
     assert result.has_speech
     assert stages == ["recording", "transcribing"]
+
+
+def _layout():
+    from keyboard_killer.platform.base import DisplayLayout, MonitorInfo
+
+    return DisplayLayout(
+        monitors=(
+            MonitorInfo("DP-2", 0, 0, 1920, 1080, 1920, 1080, 1.0, True),
+            MonitorInfo("HDMI-A-1", 1920, 0, 1920, 1080, 1920, 1080, 1.0, False),
+        ),
+        total_width=3840,
+        total_height=1080,
+    )
+
+
+def test_calibration_region_places_bounds_on_their_monitor(tmp_path) -> None:
+    import json
+
+    from keyboard_killer.ui.gaze_region import calibration_region
+
+    path = tmp_path / "calib.json"
+    path.write_text(
+        json.dumps(
+            {
+                "monitor_connector": "HDMI-A-1",
+                "bounds": {"min_x": 0.0, "min_y": 0.0, "max_x": 1919.0, "max_y": 1079.0},
+            }
+        )
+    )
+    region = calibration_region(path, _layout())
+    assert (region.x, region.y) == (1920, 0)
+    assert (region.width, region.height) == (1920, 1080)
+    assert region.source_width == 1920.0
+
+
+def test_calibration_region_falls_back_to_primary(tmp_path) -> None:
+    import json
+
+    from keyboard_killer.ui.gaze_region import calibration_region
+
+    path = tmp_path / "calib.json"
+    path.write_text(json.dumps({"monitor_connector": "MISSING", "bounds": {}}))
+    region = calibration_region(path, _layout())
+    assert (region.x, region.y) == (0, 0)
+    assert (region.width, region.height) == (1920, 1080)
+
+
+def test_cursor_motion_converges_without_overshoot() -> None:
+    from keyboard_killer.ui.cursor_motion import GazeMotion
+
+    motion = GazeMotion()
+    motion.reset(0.0, 0.0)
+    peak = 0.0
+    for index in range(180):
+        motion.update(200.0, 100.0, 1.0 / 120.0)
+        peak = max(peak, motion.x)
+    assert motion.x == pytest.approx(200.0, abs=1.0)
+    assert motion.y == pytest.approx(100.0, abs=1.0)
+    assert peak < 202.0
+
+
+def test_cursor_motion_holds_a_fixation_against_jitter() -> None:
+    import math
+
+    from keyboard_killer.ui.cursor_motion import GazeMotion, MotionSettings
+
+    motion = GazeMotion(
+        MotionSettings(fixation_radius=22.0, fixation_break_radius=40.0, search_spread=80.0)
+    )
+    motion.reset(100.0, 100.0)
+    for index in range(240):
+        motion.update(
+            100.0 + 7.0 * math.sin(index * 0.9),
+            100.0 + 7.0 * math.cos(index * 1.1),
+            1.0 / 120.0,
+        )
+    assert motion.x == pytest.approx(100.0, abs=3.0)
+    assert motion.y == pytest.approx(100.0, abs=3.0)
+
+
+def test_cursor_motion_holds_when_no_face_is_present() -> None:
+    from keyboard_killer.ui.cursor_motion import GazeMotion
+
+    motion = GazeMotion()
+    motion.reset(50.0, 60.0)
+    for _ in range(60):
+        motion.update(400.0, 400.0, 1.0 / 120.0, active=False)
+    assert (motion.x, motion.y) == (50.0, 60.0)
+    assert motion.mode == "hold"

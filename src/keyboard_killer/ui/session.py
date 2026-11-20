@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import signal
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -107,11 +108,20 @@ class DaemonController:
             return self._status
         self.paths.ensure_directories()
         log_path = self.paths.logs_dir / "daemon.log"
+        args = list(self.extra_args)
+        try:
+            from keyboard_killer.config.schema import AppConfig
+
+            backend = AppConfig.load(self.paths.settings_path).camera_backend
+            if backend == "pipewire" and "--camera-backend" not in args:
+                args.extend(["--camera-backend", "pipewire"])
+        except Exception:
+            pass
         try:
             log = log_path.open("ab")
             self._log = log
             self._proc = subprocess.Popen(
-                [self.python, "-m", "keyboard_killer.main", *self.extra_args],
+                [self.python, "-m", "keyboard_killer.main", *args],
                 cwd=str(Path(__file__).resolve().parents[3]),
                 stdin=subprocess.DEVNULL,
                 stdout=log,
@@ -126,11 +136,14 @@ class DaemonController:
 
     def pause(self) -> SessionStatus:
         if self._proc is not None and self._proc.poll() is None:
-            self._proc.terminate()
+            # SIGINT lets the CLI unwind its context managers and release the
+            # camera and uinput device; SIGTERM skipped that cleanup.
+            self._proc.send_signal(signal.SIGINT)
             try:
-                self._proc.wait(timeout=3.0)
+                self._proc.wait(timeout=4.0)
             except subprocess.TimeoutExpired:
                 self._proc.kill()
+                self._proc.wait(timeout=2.0)
         self._proc = None
         self._close_log()
         self._status = SessionStatus(SessionState.PAUSED, "Paused (daemon stopped).")

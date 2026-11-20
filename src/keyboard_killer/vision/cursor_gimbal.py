@@ -377,6 +377,7 @@ def run_vision_loop(
             extract_landmarks=True,
             use_gpu=config.use_gpu,
             keep_images=False,
+            capture_backend=getattr(config, "camera_backend", "v4l2"),
         ) as stereo:
             while True:
                 if stop_event is not None and stop_event.is_set():

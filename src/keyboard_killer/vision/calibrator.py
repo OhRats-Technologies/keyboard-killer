@@ -1309,6 +1309,7 @@ def run_calibration_ui(
             extract_landmarks=True,
             use_gpu=config.use_gpu,
             keep_images=False,
+            capture_backend=getattr(config, "camera_backend", "v4l2"),
         ) as stereo:
             cam2_label = "Mono camera" if stereo.mono else "Camera 2"
             while True:

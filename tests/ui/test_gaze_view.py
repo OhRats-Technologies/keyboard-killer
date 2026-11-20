@@ -66,7 +66,7 @@ def test_home_screen_cursor_toggle_uses_the_overlay_controller(qapp, tmp_path) -
             self.running = False
             self.error = ""
 
-        def start(self):
+        def start(self, live_region=None):
             self.running = True
             return CursorStatus(True, "running")
 
@@ -78,7 +78,7 @@ def test_home_screen_cursor_toggle_uses_the_overlay_controller(qapp, tmp_path) -
             return CursorStatus(self.running)
 
     class FailingCursor(FakeCursor):
-        def start(self):
+        def start(self, live_region=None):
             self.error = "No X11 display."
             return CursorStatus(False, "", self.error)
 
@@ -120,6 +120,27 @@ def test_models_panel_renders_a_speech_test_result(qapp, tmp_path) -> None:
         assert "42 MS" in panel.test_detail.text()
         assert panel.test_status.text() == "HEARD · LOCAL PARAKEET"
         assert panel.test_button.isEnabled()
+    finally:
+        window.shutdown()
+        window.close()
+
+
+def test_cameras_panel_toggles_pipewire_sharing(qapp, tmp_path, monkeypatch) -> None:
+    from keyboard_killer.config.schema import AppConfig
+
+    monkeypatch.setattr("keyboard_killer.ui.app.pipewire_available", lambda: True)
+    window = _window(tmp_path)
+    window.config.camera_mode = "mono"
+    window.config.cam1_by_id = "/dev/v4l/by-id/cam-a"
+    window.config.cam2_by_id = "/dev/v4l/by-id/cam-b"
+    panel = window.pages["Cameras"]
+    try:
+        panel.refresh()
+        assert panel.share_button.isEnabled()
+        panel._toggle_sharing(True)
+        assert window.config.camera_backend == "pipewire"
+        assert AppConfig.load(window.paths.settings_path).camera_backend == "pipewire"
+        assert panel.share_button.isChecked()
     finally:
         window.shutdown()
         window.close()

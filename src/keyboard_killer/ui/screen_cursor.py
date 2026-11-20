@@ -8,6 +8,7 @@ import sys
 from dataclasses import dataclass
 
 from keyboard_killer.config.paths import AppPaths, current_paths
+from keyboard_killer.ui.gaze_region import GazeRegion, region_args
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,7 @@ class ScreenCursor:
     def error(self) -> str:
         return self._error
 
-    def start(self) -> CursorStatus:
+    def start(self, live_region: GazeRegion | None = None) -> CursorStatus:
         if self.running:
             return CursorStatus(True, "Screen cursor running.")
         ok, reason = self.availability()
@@ -76,6 +77,8 @@ class ScreenCursor:
             ]
             if self.force_demo:
                 command.append("--demo")
+            if live_region is not None:
+                command.extend(region_args(live_region))
             self._proc = subprocess.Popen(
                 command,
                 env=env,

@@ -2,13 +2,10 @@
 
 Wayland does not let a normal client place a top-level window at an arbitrary
 screen position, so the main app launches this module with Qt's ``xcb`` plugin
-whenever an X display is available.  The process reads the daemon's shared
-gaze snapshot and falls back to a clearly labeled demo path when no live state
-is published.
-
-One managed, frameless window covers each monitor. KWin keeps managed XWayland
-windows above Wayland windows; a single virtual-desktop-sized override-redirect
-window is not reliably composited above native Wayland clients.
+whenever an X display is available.  One shared motion engine reads the
+daemon's gaze snapshot, filters fixations/searching, and drives one overlay
+window per monitor.  Without live data it plays a labeled demo inside the same
+calibrated region, so the preview never claims more coverage than live gaze.
 """
 
 from __future__ import annotations
@@ -17,18 +14,22 @@ import argparse
 import os
 import sys
 import time
+from dataclasses import dataclass
 
 from PySide6.QtCore import QPointF, QRect, Qt, QTimer
 from PySide6.QtGui import QColor, QGuiApplication, QPainter, QScreen
 from PySide6.QtWidgets import QApplication, QWidget
 
 from keyboard_killer.platform.linux.display import get_display_layout
+from keyboard_killer.ui.cursor_motion import GazeMotion, MotionSettings
 from keyboard_killer.ui.gaze_art import cursor_bounds, demo_gaze, draw_gaze_cursor
+from keyboard_killer.ui.gaze_region import GazeRegion, full_region
 from keyboard_killer.ui.gaze_source import LiveGaze
 
 TICK_MS = 16
 DEMO_LABEL = "DEMO"
-CURSOR_SCALE = 1.45
+NO_FACE_LABEL = "NO FACE"
+CURSOR_SCALE = 1.0
 
 
 def _alive(pid: int) -> bool:
@@ -43,27 +44,130 @@ def _alive(pid: int) -> bool:
     return True
 
 
-class CursorOverlay(QWidget):
-    """One transparent surface per monitor; paints only near the cursor."""
+@dataclass(frozen=True)
+class CursorFrame:
+    point: QPointF
+    mode: str
+    blinking: bool
+    label: str = ""
+
+
+class CursorEngine:
+    """Shared gaze target, demo path, and fixation-aware spring state."""
 
     def __init__(
         self,
         *,
-        screen: QScreen,
-        virtual_geometry: QRect,
-        started: float,
+        live_region: GazeRegion,
         demo_only: bool = False,
-        source_size: tuple[int, int] | None = None,
+        started: float | None = None,
     ) -> None:
-        super().__init__()
+        self.live_region = live_region
         self.demo_only = demo_only
-        self.window_geometry = screen.availableGeometry()
-        self.virtual_geometry = virtual_geometry
-        self._started = started
-        self.source_width, self.source_height = source_size or (1920, 1080)
+        self._started = started if started is not None else time.monotonic()
         self._gaze = LiveGaze()
+        self._motion = GazeMotion(
+            MotionSettings(
+                stiffness=190.0,
+                damping_ratio=1.0,
+                fixation_radius=30.0,
+                fixation_break_radius=55.0,
+                fixation_dwell_s=0.13,
+                search_spread=110.0,
+                search_stiffness_scale=0.46,
+                search_damping_scale=1.6,
+            )
+        )
+        self._last_tick = 0.0
+        self._last_frame: CursorFrame | None = None
+        self._mode = ""
+
+    def _live_point(self, x: float, y: float) -> QPointF:
+        region = self.live_region
+        source_w = max(1.0, region.source_width or region.width)
+        source_h = max(1.0, region.source_height or region.height)
+        nx = min(1.0, max(0.0, (x - region.source_x) / source_w))
+        ny = min(1.0, max(0.0, (y - region.source_y) / source_h))
+        return QPointF(
+            region.x + nx * region.width,
+            region.y + ny * region.height,
+        )
+
+    def _demo_point(self, elapsed: float) -> QPointF:
+        region = self.live_region
+        nx, ny = demo_gaze(elapsed)
+        return QPointF(
+            region.x + nx * region.width,
+            region.y + ny * region.height,
+        )
+
+    @staticmethod
+    def label_for(mode: str) -> str:
+        if mode == "demo":
+            return DEMO_LABEL
+        if mode == "no-face":
+            return NO_FACE_LABEL
+        return ""
+
+    def frame(self, now: float | None = None) -> CursorFrame:
+        """Return one shared frame; extra overlay timers reuse the same update."""
+        stamp = time.monotonic() if now is None else now
+        if self._last_frame is not None and stamp - self._last_tick < 0.008:
+            return self._last_frame
+        dt = stamp - self._last_tick if self._last_tick > 0.0 else 1.0 / 60.0
+        self._last_tick = stamp
+
+        sample = None
+        if not self.demo_only:
+            sample = self._gaze.read()
+        if sample is not None and sample.live:
+            target = self._live_point(sample.x, sample.y)
+            mode = "live" if sample.face else "no-face"
+            active = sample.face
+            blinking = sample.blinking
+        else:
+            target = self._demo_point(stamp - self._started)
+            mode = "demo"
+            active = False
+            blinking = False
+
+        if mode != self._mode:
+            self._motion.reset(target.x(), target.y(), stamp)
+            self._mode = mode
+
+        if mode == "demo":
+            point = target
+        else:
+            mx, my, _ = self._motion.update(
+                target.x(),
+                target.y(),
+                dt,
+                active=active,
+                blinking=blinking,
+            )
+            point = QPointF(mx, my)
+
+        self._last_frame = CursorFrame(
+            point=point,
+            mode=mode,
+            blinking=blinking,
+            label=self.label_for(mode),
+        )
+        return self._last_frame
+
+    def close(self) -> None:
+        self._gaze.close()
+
+
+class CursorOverlay(QWidget):
+    """One transparent surface per monitor; paints only near the cursor."""
+
+    def __init__(self, *, screen: QScreen, engine: CursorEngine) -> None:
+        super().__init__()
+        self.engine = engine
+        self.window_geometry = screen.availableGeometry()
         self._last_point: QPointF | None = None
-        self._mode = "demo"
+        self._label = ""
 
         flags = (
             Qt.WindowType.FramelessWindowHint
@@ -91,51 +195,27 @@ class CursorOverlay(QWidget):
         self._timer.timeout.connect(self._tick)
         self._timer.start()
 
-    # -- state ---------------------------------------------------------
-    def _sample(self) -> tuple[float, float, str]:
-        elapsed = time.monotonic() - self._started
-        if not self.demo_only:
-            sample = self._gaze.read()
-            if sample is not None and sample.live:
-                x = sample.x / max(1, self.source_width)
-                y = sample.y / max(1, self.source_height)
-                return (
-                    min(0.995, max(0.005, x)),
-                    min(0.995, max(0.005, y)),
-                    "live" if sample.face else "no-face",
-                )
-        x, y = demo_gaze(elapsed)
-        return x, y, "demo"
-
     def _tick(self) -> None:
-        nx, ny, mode = self._sample()
-        if mode != self._mode:
-            self._mode = mode
-
-        global_point = QPointF(
-            self.virtual_geometry.x() + nx * self.virtual_geometry.width(),
-            self.virtual_geometry.y() + ny * self.virtual_geometry.height(),
+        frame = self.engine.frame()
+        local = frame.point - QPointF(self.window_geometry.topLeft())
+        inside = (
+            0 <= local.x() <= self.width()
+            and 0 <= local.y() <= self.height()
         )
-        local = global_point - QPointF(self.window_geometry.topLeft())
-        if 0 <= local.x() <= self.width() and 0 <= local.y() <= self.height():
-            label = self._current_label()
+        if inside:
+            label = frame.label
             if self._last_point is None:
                 self.update(self._cursor_rect(local, label))
             else:
-                old = self._cursor_rect(self._last_point, self._current_label())
+                old = self._cursor_rect(self._last_point, self._label)
                 new = self._cursor_rect(local, label)
                 self.update(old.united(new))
             self._last_point = local
+            self._label = label
         elif self._last_point is not None:
-            self.update(self._cursor_rect(self._last_point, self._current_label()))
+            self.update(self._cursor_rect(self._last_point, self._label))
             self._last_point = None
-
-    def _current_label(self) -> str:
-        if self._mode == "no-face":
-            return "NO FACE"
-        if self._mode == "demo":
-            return DEMO_LABEL
-        return ""
+            self._label = ""
 
     def _cursor_rect(self, point: QPointF, label: str) -> QRect:
         bounds = cursor_bounds(CURSOR_SCALE)
@@ -145,8 +225,6 @@ class CursorOverlay(QWidget):
             int(bounds.width()) + 16,
             int(bounds.height()) + 16,
         )
-        if label:
-            rect = rect.united(QRect(int(point.x()) + 8, int(point.y()) + 20, 90, 30))
         return rect
 
     def paintEvent(self, event) -> None:  # noqa: N802
@@ -161,12 +239,11 @@ class CursorOverlay(QWidget):
             painter,
             self._last_point,
             scale=CURSOR_SCALE,
-            label=self._current_label(),
+            label=self._label,
         )
         painter.end()
 
     def closeEvent(self, event) -> None:  # noqa: N802
-        self._gaze.close()
         self._timer.stop()
         super().closeEvent(event)
 
@@ -178,38 +255,55 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--duration", type=float, default=None, help="exit after N seconds")
     parser.add_argument("--source-width", type=int, default=None)
     parser.add_argument("--source-height", type=int, default=None)
+    parser.add_argument("--live-x", type=int, default=None)
+    parser.add_argument("--live-y", type=int, default=None)
+    parser.add_argument("--live-width", type=int, default=None)
+    parser.add_argument("--live-height", type=int, default=None)
+    parser.add_argument("--live-source-x", type=float, default=0.0)
+    parser.add_argument("--live-source-y", type=float, default=0.0)
+    parser.add_argument("--live-source-width", type=float, default=None)
+    parser.add_argument("--live-source-height", type=float, default=None)
     return parser.parse_args(argv)
+
+
+def _resolve_region(args: argparse.Namespace) -> tuple[GazeRegion, tuple[int, int]]:
+    try:
+        layout = get_display_layout()
+    except Exception:
+        layout = None
+    if layout is None:
+        region = GazeRegion(0, 0, 1920, 1080, source_width=1920, source_height=1080)
+        source = (1920, 1080)
+    else:
+        region = full_region(layout)
+        source = (layout.total_width, layout.total_height)
+    if args.live_width and args.live_height:
+        region = GazeRegion(
+            x=args.live_x if args.live_x is not None else region.x,
+            y=args.live_y if args.live_y is not None else region.y,
+            width=args.live_width,
+            height=args.live_height,
+            source_x=args.live_source_x,
+            source_y=args.live_source_y,
+            source_width=args.live_source_width or args.live_width,
+            source_height=args.live_source_height or args.live_height,
+        )
+    if args.source_width and args.source_height:
+        source = (args.source_width, args.source_height)
+    return region, source
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse(argv)
-    source = None
-    if args.source_width and args.source_height:
-        source = (args.source_width, args.source_height)
-    else:
-        try:
-            layout = get_display_layout()
-            source = (layout.total_width, layout.total_height)
-        except Exception:
-            source = (1920, 1080)
+    region, _source = _resolve_region(args)
 
     QApplication.setApplicationName("Keyboard-Killer Gaze Cursor")
     app = QApplication([sys.argv[0]])
     screens = QGuiApplication.screens()
     if not screens:
         return 1
-    virtual = screens[0].virtualGeometry()
-    started = time.monotonic()
-    overlays = [
-        CursorOverlay(
-            screen=screen,
-            virtual_geometry=virtual,
-            started=started,
-            demo_only=args.demo,
-            source_size=source,
-        )
-        for screen in screens
-    ]
+    engine = CursorEngine(live_region=region, demo_only=args.demo)
+    overlays = [CursorOverlay(screen=screen, engine=engine) for screen in screens]
     for overlay in overlays:
         overlay.show()
         overlay.raise_()
@@ -226,6 +320,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.duration is not None:
         QTimer.singleShot(max(0, int(args.duration * 1000)), app.quit)
     result = app.exec()
+    engine.close()
     for overlay in overlays:
         overlay.close()
     return result

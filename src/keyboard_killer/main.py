@@ -295,6 +295,7 @@ def _apply_runtime_overrides(
     saccade_px: float | None = None,
     saccade_ms: float | None = None,
     gimbal_gain: float | None = None,
+    camera_backend: str | None = None,
     exp1: int | None = None,
     gain1: int | None = None,
     exp2: int | None = None,
@@ -324,6 +325,8 @@ def _apply_runtime_overrides(
         cfg.saccade_hold_ms = saccade_ms
     if gimbal_gain is not None:
         cfg.gimbal_gain = gimbal_gain
+    if camera_backend in ("v4l2", "pipewire"):
+        cfg.camera_backend = camera_backend
     if exp1 is not None:
         cfg.cam1_exposure = exp1
     if gain1 is not None:
@@ -405,6 +408,10 @@ def run_all(
         "--eye-mouse/--no-eye-mouse",
         help="Let gaze drive OS cursor (default: internal gaze guide only)",
     ),
+    camera_backend: str | None = typer.Option(
+        None,
+        help="Camera capture backend: v4l2 | pipewire (mono sharing)",
+    ),
     firefox_port: int | None = typer.Option(None, help="Firefox DOM WebSocket bridge port (default 8765)"),
     no_firefox_bridge: bool = typer.Option(False, help="Disable Tier-0 Firefox WebSocket DOM bridge"),
     pop_peak: float | None = typer.Option(None, help="Pop detector peak threshold"),
@@ -426,6 +433,7 @@ def run_all(
         saccade_px=saccade_px,
         saccade_ms=saccade_ms,
         gimbal_gain=gimbal_gain,
+        camera_backend=camera_backend,
         exp1=exp1,
         gain1=gain1,
         exp2=exp2,
@@ -476,6 +484,10 @@ def run_vision(
         "--eye-mouse/--no-eye-mouse",
         help="Drive OS cursor with gaze+gimbal (default True for run-vision)",
     ),
+    camera_backend: str | None = typer.Option(
+        None,
+        help="Camera capture backend: v4l2 | pipewire (mono sharing)",
+    ),
     dry_run: bool = typer.Option(False, help="Run without writing to /dev/uinput"),
     seconds: float | None = typer.Option(None, help="Optional run duration in seconds"),
 ) -> None:
@@ -490,6 +502,7 @@ def run_vision(
         saccade_px=saccade_px,
         saccade_ms=saccade_ms,
         gimbal_gain=gimbal_gain,
+        camera_backend=camera_backend,
         exp1=exp1,
         gain1=gain1,
         exp2=exp2,

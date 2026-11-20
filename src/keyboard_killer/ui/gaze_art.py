@@ -5,13 +5,20 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QPainter,
+    QPen,
+    QRadialGradient,
+)
 
 # The screen cursor can sit over arbitrary application colors, so its palette is
 # intentionally fixed instead of following the app theme.
-CURSOR_FILL = QColor("#141414")
-CURSOR_OUTLINE = QColor("#f5f2e8")
-CURSOR_RING = QColor("#c97b3f")
+CURSOR_TINT = QColor("#c97b3f")
+CURSOR_LABEL = QColor("#f5f2e8")
+CURSOR_HOLE = 0.16
 
 
 def demo_gaze(elapsed_s: float) -> tuple[float, float]:
@@ -21,26 +28,10 @@ def demo_gaze(elapsed_s: float) -> tuple[float, float]:
     return (min(0.96, max(0.04, x)), min(0.94, max(0.06, y)))
 
 
-def cursor_path() -> QPainterPath:
-    """Classic pointer arrow with the hotspot at (0, 0)."""
-    path = QPainterPath(QPointF(0.0, 0.0))
-    for x, y in (
-        (0.0, 25.0),
-        (6.4, 18.6),
-        (10.4, 27.0),
-        (14.8, 25.0),
-        (10.8, 16.8),
-        (19.8, 16.0),
-    ):
-        path.lineTo(x, y)
-    path.closeSubpath()
-    return path
-
-
 def cursor_bounds(scale: float = 1.0) -> QRectF:
-    """Bounding rectangle including the halo ring and the demo label."""
-    halo = 24.0 * scale
-    return QRectF(-halo, -halo, halo * 2.0 + 80.0 * scale, halo * 2.0 + 30.0 * scale)
+    """Bounding rectangle including the soft ring and the mode label."""
+    radius = 52.0 * scale
+    return QRectF(-radius, -radius, radius * 2.0, radius * 2.0 + 30.0 * scale)
 
 
 def draw_gaze_cursor(
@@ -50,40 +41,39 @@ def draw_gaze_cursor(
     scale: float = 1.0,
     label: str = "",
 ) -> None:
-    """Draw the cursor and halo at ``point`` in widget coordinates."""
+    """Draw a soft ring with a fully transparent center at ``point``."""
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     painter.translate(point)
     painter.scale(scale, scale)
 
-    halo = QColor(CURSOR_RING)
-    halo.setAlpha(58)
-    painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.setPen(QPen(halo, 1.8))
-    painter.drawEllipse(QPointF(2.0, 5.0), 22.0, 22.0)
-    halo.setAlpha(150)
-    painter.setPen(QPen(halo, 1.6))
-    painter.drawEllipse(QPointF(2.0, 5.0), 15.0, 15.0)
+    radius = 48.0
+    tint = QColor(CURSOR_TINT)
 
-    arrow = cursor_path()
+    # A gentle wash that fades out toward both the hole and the rim.
+    gradient = QRadialGradient(QPointF(0.0, 0.0), radius)
+    gradient.setColorAt(0.0, QColor(tint.red(), tint.green(), tint.blue(), 0))
+    gradient.setColorAt(CURSOR_HOLE, QColor(tint.red(), tint.green(), tint.blue(), 0))
+    gradient.setColorAt(0.26, QColor(tint.red(), tint.green(), tint.blue(), 24))
+    gradient.setColorAt(0.52, QColor(tint.red(), tint.green(), tint.blue(), 62))
+    gradient.setColorAt(0.68, QColor(tint.red(), tint.green(), tint.blue(), 78))
+    gradient.setColorAt(0.84, QColor(tint.red(), tint.green(), tint.blue(), 28))
+    gradient.setColorAt(1.0, QColor(tint.red(), tint.green(), tint.blue(), 0))
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor(0, 0, 0, 90))
-    painter.save()
-    painter.translate(1.4, 2.0)
-    painter.drawPath(arrow)
-    painter.restore()
+    painter.setBrush(QBrush(gradient))
+    painter.drawEllipse(QPointF(0.0, 0.0), radius, radius)
 
-    painter.setBrush(CURSOR_FILL)
-    painter.setPen(
-        QPen(
-            CURSOR_OUTLINE,
-            2.2,
-            Qt.PenStyle.SolidLine,
-            Qt.PenCapStyle.RoundCap,
-            Qt.PenJoinStyle.RoundJoin,
-        )
-    )
-    painter.drawPath(arrow)
+    # Thin definition rings keep the shape readable on busy backgrounds.
+    ring = QColor(tint)
+    ring.setAlpha(145)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(QPen(ring, 1.2))
+    painter.drawEllipse(QPointF(0.0, 0.0), 31.0, 31.0)
+
+    faint = QColor(tint)
+    faint.setAlpha(34)
+    painter.setPen(QPen(faint, 1.0))
+    painter.drawEllipse(QPointF(0.0, 0.0), 11.0, 11.0)
 
     if label:
         font = painter.font()
@@ -94,21 +84,18 @@ def draw_gaze_cursor(
         metrics = painter.fontMetrics()
         width = metrics.horizontalAdvance(label) + 12
         height = metrics.height() + 6
-        bubble = QRectF(14.0, 24.0, width, height)
-        painter.setPen(QPen(QColor(90, 68, 50, 180), 1.0))
-        painter.setBrush(QColor(20, 20, 20, 214))
+        bubble = QRectF(-width / 2.0, 43.0, width, height)
+        painter.setPen(QPen(QColor(90, 68, 50, 160), 1.0))
+        painter.setBrush(QColor(20, 20, 20, 196))
         painter.drawRect(bubble)
-        painter.setPen(CURSOR_OUTLINE)
+        painter.setPen(CURSOR_LABEL)
         painter.drawText(bubble, Qt.AlignmentFlag.AlignCenter, label)
     painter.restore()
 
 
 __all__ = [
-    "CURSOR_FILL",
-    "CURSOR_OUTLINE",
-    "CURSOR_RING",
+    "CURSOR_TINT",
     "cursor_bounds",
-    "cursor_path",
     "demo_gaze",
     "draw_gaze_cursor",
 ]

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from keyboard_killer.vision.landmarks import CameraObservation, FaceFeatureExtractor
+from keyboard_killer.platform.linux.pipewire import open_pipewire_capture
 from keyboard_killer.platform.linux.v4l2 import CameraLockReport, open_locked_capture
 
 
@@ -50,15 +51,19 @@ class _CameraReaderThread:
         extract_landmarks: bool = False,
         use_gpu: bool = True,
         keep_images: bool = True,
+        capture_backend: str = "v4l2",
     ) -> None:
-        self.cap, self.report = open_locked_capture(
-            by_id_path=by_id_path,
-            width=width,
-            height=height,
-            fps=fps,
-            exposure_absolute=exposure_absolute,
-            gain=gain,
-        )
+        if capture_backend == "pipewire":
+            self.cap, self.report = open_pipewire_capture(by_id_path)
+        else:
+            self.cap, self.report = open_locked_capture(
+                by_id_path=by_id_path,
+                width=width,
+                height=height,
+                fps=fps,
+                exposure_absolute=exposure_absolute,
+                gain=gain,
+            )
         self._extract_landmarks = extract_landmarks
         self._use_gpu = use_gpu
         self._keep_images = keep_images
@@ -142,8 +147,15 @@ class StereoCapture:
         extract_landmarks: bool = False,
         use_gpu: bool = True,
         keep_images: bool = True,
+        capture_backend: str = "v4l2",
     ) -> None:
+        if capture_backend == "pipewire" and not (mono or not cam2_by_id):
+            raise RuntimeError(
+                "PipeWire camera sharing is mono-only; switch camera mode to mono "
+                "or use the V4L2 backend for stereo."
+            )
         self.mono = bool(mono or not cam2_by_id)
+        self.capture_backend = capture_backend
         self._r1 = _CameraReaderThread(
             cam1_by_id,
             width,
@@ -154,6 +166,7 @@ class StereoCapture:
             extract_landmarks=extract_landmarks,
             use_gpu=use_gpu,
             keep_images=keep_images,
+            capture_backend=capture_backend,
         )
         self._r2: _CameraReaderThread | None = None
         if not self.mono:

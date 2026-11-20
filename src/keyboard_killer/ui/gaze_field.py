@@ -9,7 +9,9 @@ from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
+from keyboard_killer.ui.cursor_motion import GazeMotion, MotionSettings
 from keyboard_killer.ui.gaze_art import demo_gaze, draw_gaze_cursor
+from keyboard_killer.ui.gaze_region import GazeRegion, calibration_region
 from keyboard_killer.ui.gaze_source import GazeSample, LiveGaze
 
 TICK_MS = 33
@@ -21,21 +23,44 @@ class GazeField(QWidget):
 
     mode_changed = Signal(str)
 
-    def __init__(self, window, *, source_size: tuple[int, int] | None = None) -> None:
+    def __init__(
+        self,
+        window,
+        *,
+        source_size: tuple[int, int] | None = None,
+        live_region: GazeRegion | None = None,
+    ) -> None:
         super().__init__()
         self.window = window
         self._source_width, self._source_height = source_size or (1920, 1080)
         try:
-            monitors = tuple(
-                (m.x, m.y, m.width, m.height) for m in window.display_layout.monitors
-            )
+            layout = window.display_layout
+            monitors = tuple((m.x, m.y, m.width, m.height) for m in layout.monitors)
         except Exception:
+            layout = None
             monitors = ()
         self._monitors = monitors or ((0, 0, self._source_width, self._source_height),)
         self._bounds_x = min(m[0] for m in self._monitors)
         self._bounds_y = min(m[1] for m in self._monitors)
         self._bounds_w = max(1, max(m[0] + m[2] for m in self._monitors) - self._bounds_x)
         self._bounds_h = max(1, max(m[1] + m[3] for m in self._monitors) - self._bounds_y)
+        if live_region is None:
+            live_region = (
+                calibration_region(window.paths.calibration_path, layout)
+                if layout is not None
+                else None
+            )
+        self._live_region = live_region
+        self._motion = GazeMotion(
+            MotionSettings(
+                stiffness=140.0,
+                fixation_radius=26.0,
+                fixation_break_radius=48.0,
+                search_spread=95.0,
+            )
+        )
+        self._point = QPointF()
+        self._last_tick = 0.0
         self._gaze = LiveGaze()
         self._trail: deque[QPointF] = deque(maxlen=TRAIL_POINTS)
         self._started = time.monotonic()
@@ -56,18 +81,67 @@ class GazeField(QWidget):
     def mode(self) -> str:
         return self._mode
 
+    def _live_field_rect(self, screen: QRectF) -> QRectF:
+        region = self._live_region
+        if region is None:
+            return screen
+        return QRectF(
+            screen.x() + (region.x - self._bounds_x) / self._bounds_w * screen.width(),
+            screen.y() + (region.y - self._bounds_y) / self._bounds_h * screen.height(),
+            region.width / self._bounds_w * screen.width(),
+            region.height / self._bounds_h * screen.height(),
+        )
+
     def _tick(self) -> None:
         self._frame += 1
+        now = time.monotonic()
+        dt = now - self._last_tick if self._last_tick > 0.0 else TICK_MS / 1000.0
+        self._last_tick = now
         sample = self._gaze.read()
         self._last_sample = sample
+        screen = self._screen_rect()
+        live_rect = self._live_field_rect(screen)
+        region = self._live_region
+
         if sample is not None and sample.live:
             mode = "live" if sample.face else "no-face"
+            if region is not None:
+                source_w = max(1.0, region.source_width or region.width)
+                source_h = max(1.0, region.source_height or region.height)
+                nx = min(1.0, max(0.0, (sample.x - region.source_x) / source_w))
+                ny = min(1.0, max(0.0, (sample.y - region.source_y) / source_h))
+                target = QPointF(
+                    live_rect.x() + nx * live_rect.width(),
+                    live_rect.y() + ny * live_rect.height(),
+                )
+            else:
+                target = self._field_point(screen, sample.x, sample.y)
         else:
             mode = "demo"
+            nx, ny = demo_gaze(now - self._started)
+            target = QPointF(
+                live_rect.x() + nx * live_rect.width(),
+                live_rect.y() + ny * live_rect.height(),
+            )
+
         if mode != self._mode:
             self._mode = mode
+            self._motion.reset(target.x(), target.y(), now)
             self._trail.clear()
             self.mode_changed.emit(mode)
+
+        if mode == "demo":
+            self._point = target
+        else:
+            mx, my, _ = self._motion.update(
+                target.x(),
+                target.y(),
+                dt,
+                active=sample.face,
+                blinking=sample.blinking,
+            )
+            self._point = QPointF(mx, my)
+        self._trail.append(self._point)
         self.update()
 
     def _screen_rect(self) -> QRectF:
@@ -96,23 +170,6 @@ class GazeField(QWidget):
         nx = min(0.995, max(0.005, (x - self._bounds_x) / self._bounds_w))
         ny = min(0.995, max(0.005, (y - self._bounds_y) / self._bounds_h))
         return QPointF(screen.x() + nx * screen.width(), screen.y() + ny * screen.height())
-
-    def _position(self) -> tuple[QPointF, str]:
-        screen = self._screen_rect()
-        sample = self._last_sample
-        if sample is not None and sample.live:
-            return (
-                self._field_point(screen, sample.x, sample.y),
-                "live" if sample.face else "no-face",
-            )
-        nx, ny = demo_gaze(time.monotonic() - self._started)
-        return (
-            QPointF(
-                screen.x() + nx * screen.width(),
-                screen.y() + ny * screen.height(),
-            ),
-            "demo",
-        )
 
     def paintEvent(self, event) -> None:  # noqa: N802
         tokens = self.window.theme_tokens
@@ -143,8 +200,7 @@ class GazeField(QWidget):
         for rect in monitors:
             painter.drawRect(rect)
 
-        point, mode = self._position()
-        self._trail.append(point)
+        point, mode = self._point, self._mode
         if len(self._trail) > 1:
             for index in range(1, len(self._trail)):
                 alpha = int(80 * index / len(self._trail))
@@ -153,7 +209,7 @@ class GazeField(QWidget):
                 painter.setPen(QPen(trail, 1.4))
                 painter.drawLine(self._trail[index - 1], self._trail[index])
 
-        draw_gaze_cursor(painter, point, scale=0.72)
+        draw_gaze_cursor(painter, point, scale=0.45)
 
         label_font = QFont("Space Mono")
         label_font.setPointSize(7)
