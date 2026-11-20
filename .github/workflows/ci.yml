@@ -44,7 +44,7 @@ jobs:
           enable-cache: true
       - name: Validate version and packaging structure
         run: |
-          ./scripts/check-version.sh 0.1.0
+          ./scripts/check-version.sh
           uv run --python 3.13 python packaging/linux/build_deb.py --no-venv --output /tmp/keyboard-killer-structure.deb
           ar t /tmp/keyboard-killer-structure.deb
           ar p /tmp/keyboard-killer-structure.deb data.tar.gz > /tmp/keyboard-killer-data.tar.gz

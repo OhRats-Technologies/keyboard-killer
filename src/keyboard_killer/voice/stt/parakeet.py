@@ -56,7 +56,7 @@ class ParakeetSttEngine:
         started = time.perf_counter()
         text = str(self._model.recognize(arr, sample_rate=16000) or "").strip()
         elapsed_ms = (time.perf_counter() - started) * 1000.0
-        # Parakeet does not expose Whisper's no-speech/logprob metadata.  The VAD
+        # Parakeet does not expose no-speech/logprob metadata.  The VAD
         # endpointing and the lexical gates still apply in the listener.
         return SttResult(text=text, latency_ms=elapsed_ms)
 

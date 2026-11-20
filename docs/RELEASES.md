@@ -9,7 +9,7 @@ that exact commit.
 `pyproject.toml` and the newest `CHANGELOG.md` entry must agree:
 
 ```sh
-VERSION="0.1.0"
+VERSION="0.1.1"
 ./scripts/check-version.sh "$VERSION"
 ```
 
@@ -24,8 +24,8 @@ before anything is published.
 4. Tag and push:
 
 ```sh
-git tag -a v0.1.0 -m "Keyboard-Killer 0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "Keyboard-Killer 0.1.1"
+git push origin v0.1.1
 ```
 
 `.github/workflows/release.yml` then:
@@ -42,24 +42,25 @@ git push origin v0.1.0
 
 ## Public mirror
 
-The source repo is private, so GitHub release asset URLs are not anonymously
-downloadable. The landing page and installer use the public mirror instead:
+The repository and release assets are public, so the primary download path is
+GitHub:
 
 ```
-https://keyboard-killer.ohrats.party/releases/keyboard-killer_amd64.deb
-https://keyboard-killer.ohrats.party/releases/keyboard-killer-x86_64.AppImage
-https://keyboard-killer.ohrats.party/releases/SHA256SUMS
+https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download/keyboard-killer_amd64.deb
+https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download/keyboard-killer-x86_64.AppImage
+https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download/SHA256SUMS
 ```
 
-The site container mounts `/data/keyboard-killer-releases` at
-`/usr/share/nginx/html/releases`. The release workflow authenticates with the
-`COOLIFY_SSH_KEY` and `COOLIFY_HOST` repository secrets. The deploy key is
-restricted to the Coolify host and is only used for this upload.
+The release workflow also mirrors the same files to
+`https://keyboard-killer.ohrats.party/releases/` as a fast CDN/fallback. The
+site container mounts `/data/keyboard-killer-releases` at
+`/usr/share/nginx/html/releases`. The mirror upload authenticates with the
+`COOLIFY_SSH_KEY` and `COOLIFY_HOST` repository secrets.
 
 ## Verify
 
 ```sh
-gh release view v0.1.0 --repo OhRats-Technologies/keyboard-killer \
+gh release view v0.1.1 --repo OhRats-Technologies/keyboard-killer \
   --json tagName,isDraft --jq '.tagName+" draft=\(.isDraft)"'
 curl -fsS https://keyboard-killer.ohrats.party/releases/SHA256SUMS
 curl -fsSIL https://keyboard-killer.ohrats.party/releases/keyboard-killer_amd64.deb
@@ -83,8 +84,8 @@ APPIMAGE_EXTRACT_AND_RUN=1 build/install-bin/keyboard-killer --help
   workflow owns the release.
 - **Do not skip `--force-runtime`.** Reusing a cached runtime after source
   changes ships stale Python files.
-- **The public mirror is the install path.** Do not point the landing page or
-  installer at `github.com/.../releases` while the repo is private.
+- **GitHub is the install path now that the repo is public.** Keep the site
+  mirror in sync as a fallback.
 - **Tag commits must be on `main`.** The verify job checks ancestry.
 - **Fix forward after publishing.** Do not rewrite a published tag; bump and
   release a new version.

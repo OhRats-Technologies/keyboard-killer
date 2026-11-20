@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class UnifiedAudioService:
-    """Single 16kHz PipeWire stream feeding both PopDetector and PTT Whisper capture."""
+    """Single 16kHz PipeWire stream feeding both PopDetector and PTT speech capture."""
 
     def __init__(
         self,

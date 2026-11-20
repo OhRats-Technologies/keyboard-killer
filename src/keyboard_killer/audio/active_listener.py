@@ -14,14 +14,13 @@ from typing import Any
 import numpy as np
 
 from keyboard_killer.voice.stt.base import SttEngine
-from keyboard_killer.voice.stt.whisper import WhisperSTTEngine
 
 logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 BLOCK_SIZE = 512  # 32ms per audio frame at 16kHz
 
-# Common Whisper hallucinations on silence, sighs, or mic bumps
+# Common STT hallucinations on silence, sighs, or mic bumps
 _WHISPER_HALLUCINATIONS = {
     "thank you",
     "thanks for watching",
@@ -254,17 +253,15 @@ class _SpeechVetoedPopDetector:
 
 
 class ActiveVoiceListener:
-    """Hands-free continuous VAD listener with speech-onset gaze hook and faster-whisper."""
+    """Hands-free continuous VAD listener with a speech-onset gaze hook."""
 
     def __init__(
         self,
         on_speech_onset: Callable[[], None] | None = None,
         is_user_attending: Callable[[], bool] | None = None,
-        whisper_model_size: str = "base.en",
         enable_pop_click: bool = False,
         require_command_prefix: bool = True,
         audio_device: int | str | None = None,
-        whisper_model: Any | None = None,
         stt_engine: SttEngine | None = None,
     ) -> None:
         self.on_speech_onset = on_speech_onset
@@ -272,20 +269,11 @@ class ActiveVoiceListener:
         self.require_command_prefix = require_command_prefix
         self.audio_device = audio_device
         self.sleeping = False
-        self.device = "custom"
-        self.compute_type = "custom"
-        self._legacy_model = whisper_model
+        if stt_engine is None:
+            raise ValueError("ActiveVoiceListener requires an SttEngine.")
         self.stt_engine = stt_engine
-
-        if whisper_model is not None:
-            # Test/compat seam: a raw faster-whisper-like object.
-            self.whisper = whisper_model
-        else:
-            if self.stt_engine is None:
-                self.stt_engine = WhisperSTTEngine(model_size=whisper_model_size)
-            self.device = getattr(self.stt_engine, "device", "custom")
-            self.compute_type = getattr(self.stt_engine, "compute_type", "custom")
-            self.whisper = self.stt_engine
+        self.device = getattr(self.stt_engine, "device", "custom")
+        self.compute_type = getattr(self.stt_engine, "compute_type", "custom")
 
         self.pop_detector = _SpeechVetoedPopDetector(enabled=enable_pop_click)
 
@@ -325,8 +313,7 @@ class ActiveVoiceListener:
         if self._worker_thread is not None and self._worker_thread.is_alive():
             self._worker_thread.join(timeout=1.5)
             self._worker_thread = None
-        if self._legacy_model is None and self.stt_engine is not None:
-            self.stt_engine.close()
+        self.stt_engine.close()
 
     def _sd_callback(
         self,
@@ -440,37 +427,13 @@ class ActiveVoiceListener:
 
     def _transcribe_and_filter(self, audio_np: np.ndarray, onset_ts: float) -> None:
         """Transcribe utterance and apply anti-hallucination & grammar gates."""
-        text = ""
-        avg_no_speech = 0.0
-        avg_logprob = 0.0
-        if self._legacy_model is not None:
-            segments, _info = self._legacy_model.transcribe(
-                audio_np,
-                language="en",
-                beam_size=1,
-                best_of=1,
-                temperature=0.0,
-                condition_on_previous_text=False,
-                vad_filter=False,
-                without_timestamps=True,
-            )
-            seg_list = list(segments)
-            if not seg_list:
-                return
-            avg_no_speech = sum(s.no_speech_prob for s in seg_list) / len(seg_list)
-            avg_logprob = sum(s.avg_logprob for s in seg_list) / len(seg_list)
-            text = " ".join(s.text.strip() for s in seg_list).strip()
-        else:
-            assert self.stt_engine is not None
-            result = self.stt_engine.transcribe_detailed(audio_np)
-            text = result.text
-            avg_no_speech = result.no_speech_prob
-            avg_logprob = result.avg_logprob
-            if not text:
-                return
+        result = self.stt_engine.transcribe_detailed(audio_np)
+        text = result.text
+        if not text:
+            return
 
         # Gate 1: Reject high no_speech_prob or low logprob (coughs, mic rustle, mumbles)
-        if avg_no_speech > 0.48 or avg_logprob < -0.85:
+        if result.no_speech_prob > 0.48 or result.avg_logprob < -0.85:
             return
 
         clean = text.lower().strip(" .,!?\"'")
@@ -501,7 +464,7 @@ class ActiveVoiceListener:
             logger.debug("Voice ignored (not a command prefix): %r", text)
             return
 
-        conf = float(np.exp(max(-2.0, min(0.0, avg_logprob))))
+        conf = result.confidence
         self.events.put(
             VoiceEvent(
                 kind="voice_command",

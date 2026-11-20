@@ -284,8 +284,6 @@ def _apply_runtime_overrides(
     exp2: int | None = None,
     gain2: int | None = None,
     hotkey: str | None = None,
-    whisper_model: str | None = None,
-    stt_engine: str | None = None,
     stt_provider: str | None = None,
     llm_backend: str | None = None,
     llm_provider: str | None = None,
@@ -320,10 +318,6 @@ def _apply_runtime_overrides(
         cfg.cam2_gain = gain2
     if hotkey is not None:
         cfg.ptt_hotkey = hotkey
-    if whisper_model is not None:
-        cfg.whisper_model = whisper_model
-    if stt_engine is not None:
-        cfg.stt_engine = stt_engine
     if stt_provider is not None:
         cfg.stt_provider = stt_provider
     if llm_backend is not None:
@@ -372,8 +366,6 @@ def run_all(
     exp2: int | None = typer.Option(None, help="Cam2 manual exposure"),
     gain2: int | None = typer.Option(None, help="Cam2 sensor gain"),
     hotkey: str | None = typer.Option(None, help="Evdev PTT hotkey (default KEY_RIGHTCTRL)"),
-    whisper_model: str | None = typer.Option(None, help="faster-whisper fallback model (default base.en)"),
-    stt_engine: str | None = typer.Option(None, help="STT engine: auto | parakeet | whisper"),
     stt_provider: str | None = typer.Option(None, help="STT execution provider: cpu | cuda"),
     llm_backend: str | None = typer.Option(None, help="LLM backend: auto | ollama | gemini | acp"),
     llm_provider: str | None = typer.Option(None, help="Provider: auto | ollama | gemini | openai_compat | acp"),
@@ -423,8 +415,6 @@ def run_all(
         exp2=exp2,
         gain2=gain2,
         hotkey=hotkey,
-        whisper_model=whisper_model,
-        stt_engine=stt_engine,
         stt_provider=stt_provider,
         llm_backend=llm_backend,
         llm_provider=llm_provider,
@@ -565,10 +555,11 @@ def test_audio(
         f"Max peak={max_stats['peak']:.3f}, Max rms={max_stats['rms']:.3f}, Floor={pop._noise_floor:.4f}"
     )
     if transcribe and recorded:
-        selection = create_stt_engine(cfg)
-        stt = selection.engine
-        if selection.fell_back:
-            console.print(f"[yellow]STT fallback: {selection.fallback_reason}[/yellow]")
+        try:
+            stt = create_stt_engine(cfg).engine
+        except Exception as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(code=1) from exc
         started = time.perf_counter()
         text = stt.transcribe(np.concatenate(recorded))
         dt_ms = (time.perf_counter() - started) * 1000.0
@@ -583,8 +574,6 @@ def test_audio(
 @app.command("run-voice")
 def run_voice(
     hotkey: str | None = typer.Option(None, help="Evdev PTT hotkey (default KEY_RIGHTCTRL)"),
-    whisper_model: str | None = typer.Option(None, help="faster-whisper fallback model (default base.en)"),
-    stt_engine: str | None = typer.Option(None, help="STT engine: auto | parakeet | whisper"),
     stt_provider: str | None = typer.Option(None, help="STT execution provider: cpu | cuda"),
     llm_backend: str | None = typer.Option(None, help="LLM backend: auto | ollama | gemini | acp"),
     llm_provider: str | None = typer.Option(None, help="Provider: auto | ollama | gemini | openai_compat | acp"),
@@ -597,12 +586,10 @@ def run_voice(
     dry_run: bool = typer.Option(False, help="Log actions without emitting /dev/uinput events"),
     seconds: float | None = typer.Option(None, help="Optional run duration in seconds"),
 ) -> None:
-    """Run only the sub-45ms pop-click + evdev PTT faster-whisper voice router."""
+    """Run only the pop-click + evdev PTT voice router."""
     cfg = _apply_runtime_overrides(
         AppConfig.load(),
         hotkey=hotkey,
-        whisper_model=whisper_model,
-        stt_engine=stt_engine,
         stt_provider=stt_provider,
         llm_backend=llm_backend,
         llm_provider=llm_provider,

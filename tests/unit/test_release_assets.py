@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -12,22 +13,38 @@ SITE = ROOT / "site"
 
 
 def test_version_script_matches_pyproject() -> None:
+    version = re.search(
+        r'^version = "([^"]+)"$', (ROOT / "pyproject.toml").read_text(), flags=re.MULTILINE
+    ).group(1)
     result = subprocess.run(
-        [str(ROOT / "scripts" / "check-version.sh"), "0.1.0"],
+        [str(ROOT / "scripts" / "check-version.sh"), version],
         cwd=ROOT,
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0
-    assert result.stdout.strip() == "0.1.0"
+    assert result.stdout.strip() == version
     branch = subprocess.run(
-        [str(ROOT / "scripts" / "check-version.sh"), "0.1.0"],
+        [str(ROOT / "scripts" / "check-version.sh"), version],
         cwd=ROOT,
         env={**os.environ, "GITHUB_REF": "refs/heads/main", "GITHUB_REF_NAME": "main"},
         capture_output=True,
         text=True,
     )
     assert branch.returncode == 0
+
+
+def test_whisper_is_not_a_dependency() -> None:
+    pyproject = (ROOT / "pyproject.toml").read_text().lower()
+    assert "faster-whisper" not in pyproject
+    assert "whisper" not in (ROOT / "src" / "keyboard_killer" / "config" / "schema.py").read_text().lower()
+
+
+def test_bundled_fonts_exist() -> None:
+    fonts = ROOT / "src" / "keyboard_killer" / "ui" / "theme" / "fonts"
+    assert (fonts / "Inter.ttf").stat().st_size > 100_000
+    assert (fonts / "SpaceMono-Regular.ttf").stat().st_size > 50_000
+    assert (fonts / "OFL-Inter.txt").exists()
 
 
 def test_landing_page_links_stable_assets() -> None:
@@ -37,7 +54,7 @@ def test_landing_page_links_stable_assets() -> None:
     assert "assets.ohrats.party/assets/logo" in html
     assert "install.sh" in html
     assert 'href="/docs.html"' in html
-    assert "github.com/OhRats-Technologies/keyboard-killer" not in html
+    assert "github.com/OhRats-Technologies/keyboard-killer/releases/latest/download" in html
     assert "keyboard-killer_amd64.deb" in html
     docs = (SITE / "docs.html").read_text()
     assert "Two stable V4L2 cameras" in docs

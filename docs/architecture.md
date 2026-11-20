@@ -171,7 +171,7 @@ Split by role. The app owns what the core loop needs; the user brings the LLM.
 
 | Role | Owner | Default |
 |---|---|---|
-| STT | App (pinned download, receipt) | Parakeet TDT 0.6B v2, ONNX int8 via `onnx-asr`; `faster-whisper base.en` fallback |
+| STT | App (pinned download, receipt) | Parakeet TDT 0.6B v2, ONNX int8 via `onnx-asr`; single engine |
 | Face landmarks | App (cache) | MediaPipe face landmarker |
 | Text LLM | User | none preselected |
 | Gaze VLM | User, optional | none; DOM, AT-SPI, and OCR tiers work without it |
@@ -238,7 +238,7 @@ Keep behavior stable; extract seams before adding surfaces.
 |---|---|---|
 | 1. Paths and capabilities | **Done** | `config/paths.py`, `config/migrations.py`, `platform/base.py`, `platform/capabilities.py`; `KEYBOARD_KILLER_HOME`; migration copies and keeps legacy files |
 | 2. Linux behind protocols | **Done** | uinput, evdev, V4L2, AT-SPI, screen, Mutter layout under `platform/linux/`; CLI/daemon behavior preserved |
-| 3. Models, providers, diagnostics | **Done** | Parakeet + pinned downloader + Whisper fallback; provider adapters; replaced native Gemini; `doctor`/`--json` |
+| 3. Models, providers, diagnostics | **Done** | Parakeet + pinned downloader (Whisper removed in 0.1.1); provider adapters; replaced native Gemini; `doctor`/`--json` |
 | 4. UI shell | **Done for Linux** | main window, tray, onboarding, settings, history, theme, D3 Wayland fallback; headless tests and light/dark goldens |
 | 5. Second OS | **Stubs only** | Windows/macOS capability reports and Pointer/Hotkey/Camera/Screen/Accessibility/Permission/Tray/Autostart stubs raise `NotSupportedError` |
 | 6. Third OS and packaging | **Linux done; others not started** | `.deb` and AppImage built and smoke-tested; no signing/notarization |

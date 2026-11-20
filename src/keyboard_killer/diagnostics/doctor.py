@@ -332,14 +332,12 @@ def format_text(report: DoctorReport) -> str:
 
     lines.append("")
     lines.append("Speech-to-text:")
-    lines.append(f"  selected: {report.stt.get('selected', 'unknown')}")
     parakeet = report.stt.get("parakeet", {})
     if parakeet:
         lines.append(
             f"  parakeet: {parakeet.get('state')} ({parakeet.get('path')})"
         )
-    whisper = report.stt.get("whisper", {})
-    lines.append(f"  whisper fallback: {'installed' if whisper.get('available') else 'missing'}")
+    lines.append(f"  selected: {report.stt.get('selected', 'missing')}")
 
     lines.append("")
     lines.append("Providers:")

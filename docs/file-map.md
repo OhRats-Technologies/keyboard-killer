@@ -96,8 +96,7 @@ keyboard-killer/
 │   │   ├── listener.py
 │   │   ├── stt/
 │   │   │   ├── base.py           # SttEngine contract
-│   │   │   ├── parakeet.py       # onnx-asr, CPU int8 default
-│   │   │   └── whisper.py        # faster-whisper fallback
+│   │   │   └── parakeet.py       # onnx-asr, CPU int8 default
 │   │   ├── audio_io.py
 │   │   ├── pop.py
 │   │   └── commands.py
@@ -179,7 +178,7 @@ keyboard-killer/
 | `config/` package (schema, paths, migrations) | **Done** | `settings.json`, one-time copy migration, `KEYBOARD_KILLER_HOME` |
 | `platform/base.py`, `platform/capabilities.py` | **Done** | One capability report for doctor/UI |
 | Linux pointer/hotkeys/cameras/V4L2/screen/AT-SPI/display | **Done** | Behavior-preserving moves; compatibility imports updated |
-| STT (`voice/stt/`) | **Done** | Parakeet + Whisper fallback, catalog/downloader/store/receipts |
+| STT (`voice/stt/`) | **Done** | Parakeet only (Whisper removed 2026-11-20), catalog/downloader/store/receipts |
 | Providers (`models/providers/`) | **Done** | openai_compat, Ollama, ACP, registry, secrets, roles |
 | Diagnostics (`diagnostics/doctor.py`) | **Done** | `doctor` and `doctor --json` |
 | UI (`ui/`) | **Done for Linux** | Main window, tray, onboarding, settings, history, tokens, overlay fallback |
@@ -213,7 +212,7 @@ keyboard-killer/
 | `vision/desktop_atspi.py` | `grounding/accessibility/linux_atspi.py` | Add `macos_ax.py` and `windows_uia.py` beside it. |
 | `input/uinput_device.py` | `input/pointer.py` + `platform/linux/pointer.py` | `PointerBackend` contract + uinput implementation. |
 | `input/evdev_mouse_listener.py` | `input/click_harvest.py` + `platform/linux/hotkeys.py` | Passive click harvesting vs evdev hotkeys. |
-| `audio/stt_engine.py` | `voice/stt/` + `voice/audio_io.py` | Separate STT engines (Parakeet default, Whisper fallback) from the PortAudio stream; drop the CUDA preload from the default path. |
+| `audio/stt_engine.py` | `voice/stt/` + `voice/audio_io.py` | Separate the Parakeet engine from the PortAudio stream. |
 | `audio/active_listener.py` | `voice/listener.py` | Shared VAD/command listener. |
 | `audio/pop_detector.py` | `voice/pop.py` | Shared. |
 | `router/command_splitter.py` | `voice/commands.py` | Command parsing belongs with voice input. |

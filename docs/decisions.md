@@ -13,7 +13,7 @@
 | D7 | Packaging/signing | Linux .deb/AppImage; macOS notarized .dmg; Windows signed MSI/EXE |
 | D8 | First cross-platform scope | Linux productization → Windows → macOS |
 | D9 | LLM providers | OpenAI-compatible + Ollama + ACP agents; keychain secrets |
-| D10 | Speech-to-text | Parakeet TDT 0.6B v2 via onnx-asr (CPU int8); faster-whisper fallback |
+| D10 | Speech-to-text | Parakeet TDT 0.6B v2 via onnx-asr (CPU int8); single engine |
 
 ## Implementation status
 
@@ -28,7 +28,7 @@
 | D7 | **Linux done** | `.deb` and AppImage built with udev/desktop/systemd; no signing, no macOS/Windows installers |
 | D8 | **Linux done** | Linux productized; Windows/macOS are tested capability stubs |
 | D9 | **Done** | Provider interface, openai_compat presets, Ollama, ACP, keychain, role checks, remote-VLM consent |
-| D10 | **Done** | Parakeet CPU int8 default, CUDA opt-in; Whisper CPU int8 fallback; pinned downloader/receipt; benchmark recorded |
+| D10 | **Done** | Parakeet CPU int8 default, CUDA opt-in; no fallback engine (2026-11-20); pinned downloader/receipt; benchmark recorded |
 
 ## D1 — UI stack
 
@@ -201,16 +201,16 @@ ACP is an editor↔coding-agent protocol. Keyboard-Killer acts as the **client**
 
 ## D10 — Speech-to-text
 
-**Decision:** English-first **NVIDIA Parakeet TDT 0.6B v2** through **`onnx-asr`** (ONNX Runtime). Keep `faster-whisper` `base.en` as an automatic fallback and a `whisper` option for non-English later.
+**Decision:** English-first **NVIDIA Parakeet TDT 0.6B v2** through **`onnx-asr`** (ONNX Runtime). It is the only STT engine; faster-whisper was removed on 2026-11-20 to keep setup and the settings surface simple.
 
 - **Runtime:** `onnx-asr` runs on Windows/Linux/macOS (x86 and Arm) and supports CUDA, TensorRT, DirectML, ROCm, and CoreML execution providers. Its README lists the `nemo-parakeet-tdt-0.6b-v2` model with an `int8` quantized variant.
-- **Defaults:** CPU + int8 everywhere (no CUDA toolkit, which removes the cuBLAS preload hack in `stt_engine.py`). Offer CUDA (Linux/Windows NVIDIA) and DirectML (Windows) as opt-in accelerators. Use CPU on macOS first: a third-party Parakeet runtime reports CoreML instability with this model; re-test before enabling.
+- **Defaults:** CPU + int8 everywhere. CUDA is opt-in on Linux/Windows; macOS remains CPU. No CUDA toolkit is required.
 - **Mode:** offline recognition on push-to-talk release. Utterances are short, so streaming is not required. Keep the existing VAD/endpointing in `active_listener.py`.
 - **Throughput:** `onnx-asr` reports ≈36× real-time on a desktop CPU and ≈57× on a T4 for Parakeet v2. Measure on this app's own utterances before claiming a latency win over `base.en`.
 - **License/size:** model card is CC-BY-4.0 (attribution in About). Pin repo, revision, bytes, and SHA-256 when adding to the catalog; do not trust the size from this note.
-- **Gap to check:** Whisper accepts `initial_prompt` for vocabulary biasing; Parakeet does not. The current command splitter uses fuzzy matching (`rapidfuzz`), so test app names and commands ("Firefox", "scroll down") against real recordings before removing Whisper.
+- **Vocabulary:** Parakeet has no `initial_prompt`; the command splitter uses fuzzy matching (`rapidfuzz`) for app names and commands.
 - **Multilingual later:** Parakeet v3 is multilingual; switching is a catalog change, not an architecture change.
 
 **Why:** a small, accurate, CPU-viable English model removes the largest first-run friction (CUDA + Hugging Face cache) and fits the "English-centric for now" scope.
 
-**Revisit if:** accuracy on short command phrases is worse than `base.en`, or `onnx-asr` stalls; then `sherpa-onnx` runs the same Parakeet export.
+**Revisit if:** accuracy on short command phrases regresses, or `onnx-asr` stalls; then `sherpa-onnx` runs the same Parakeet export.

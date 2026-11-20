@@ -3,7 +3,7 @@
 Manifest format: ``[{"wav": "path", "text": "expected words"}, ...]``.
 
 Usage:
-  uv run python scripts/stt_benchmark.py /tmp/bench/manifest.json --engine both
+  uv run python scripts/stt_benchmark.py /tmp/bench/manifest.json --engine parakeet
 """
 
 from __future__ import annotations
@@ -127,7 +127,7 @@ def run_engine(name: str, samples: list[dict[str, object]], config) -> dict[str,
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("manifest", type=Path)
-    parser.add_argument("--engine", choices=["parakeet", "whisper", "both"], default="both")
+    parser.add_argument("--engine", choices=["parakeet"], default="parakeet")
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--label", default="")
     args = parser.parse_args()
@@ -138,10 +138,9 @@ def main() -> int:
     if not isinstance(samples, list) or not samples:
         raise SystemExit("Manifest must be a non-empty list")
 
-    engines = ["parakeet", "whisper"] if args.engine == "both" else [args.engine]
     reports = []
-    for engine_name in engines:
-        config = AppConfig(stt_engine=engine_name, whisper_model="base.en", stt_provider="cpu")
+    for engine_name in [args.engine]:
+        config = AppConfig(stt_provider="cpu")
         print(f"Loading {engine_name}...")
         report = run_engine(engine_name, samples, config)
         reports.append(report)

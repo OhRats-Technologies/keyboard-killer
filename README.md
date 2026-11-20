@@ -46,7 +46,7 @@ uv run keyboard-killer run-voice --seconds 5 --dry-run
 
 ## Speech-to-text
 
-The default is **NVIDIA Parakeet TDT 0.6B v2** through `onnx-asr`, CPU int8. `faster-whisper base.en` (CPU int8) is the automatic fallback. The Parakeet files are pinned by revision, size, and SHA-256 and downloaded with resume, verification, atomic promote, and a receipt:
+The speech engine is **NVIDIA Parakeet TDT 0.6B v2** through `onnx-asr`, CPU int8. It is the only STT engine; there is no fallback selector. The Parakeet files are pinned by revision, size, and SHA-256 and downloaded with resume, verification, atomic promote, and a receipt:
 
 ```bash
 uv run keyboard-killer models download stt
@@ -58,9 +58,8 @@ Measured on this machine (CPU int8) with 12 synthesized command phrases and 40 r
 | Engine | TTS exact / WER | TTS median / p95 | Real exact / WER | Real median / p95 | Real RTF |
 |---|---|---|---|---|---|
 | Parakeet TDT 0.6B v2 | 100% / 0.000 | 170 ms / 198 ms | 92.5% / 0.025 | 245 ms / 260 ms | 0.049 |
-| faster-whisper base.en | 100% / 0.000 | 313 ms / 338 ms | 92.5% / 0.058 | 319 ms / 347 ms | 0.067 |
 
-The command phrases were TTS-generated because no human desktop-command recordings were available; the real-human set is smart-home command speech, not desktop commands. Natural human desktop commands remain untested. See [docs/features/stt.md](docs/features/stt.md).
+The command phrases were TTS-generated because no human desktop-command recordings were available; the real-human set is smart-home command speech, not desktop commands. Natural human desktop commands remain untested. The 0.1.0 benchmark also compared faster-whisper base.en; 0.1.1 removes it. See [docs/features/stt.md](docs/features/stt.md).
 
 ## AI providers (optional)
 

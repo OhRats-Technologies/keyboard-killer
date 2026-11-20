@@ -63,13 +63,9 @@ class SettingsPanel(QWidget):
         self.eye_mouse.setChecked(self.config.gaze_cursor_control)
         form.addRow("", self.eye_mouse)
 
-        self.stt_engine = QComboBox()
-        self.stt_engine.addItems(["auto", "parakeet", "whisper"])
-        self.stt_engine.setCurrentText(self.config.stt_engine)
-        form.addRow("Speech-to-text", self.stt_engine)
-
-        self.whisper_model = QLineEdit(self.config.whisper_model)
-        form.addRow("Whisper fallback", self.whisper_model)
+        self.stt_status = QLabel("")
+        self.stt_status.setObjectName("Muted")
+        form.addRow("Speech-to-text", self.stt_status)
 
         self.provider_preset = QComboBox()
         for preset in load_presets():
@@ -86,6 +82,12 @@ class SettingsPanel(QWidget):
         self.vlm_consent = QCheckBox("Allow screenshots to leave this device for the gaze VLM")
         self.vlm_consent.setChecked(self.config.gaze_vlm_remote_consent)
         form.addRow("", self.vlm_consent)
+
+        from keyboard_killer.voice.stt.factory import stt_report
+
+        report = stt_report(self.config, paths=self.paths)
+        state = report.get("parakeet", {}).get("state", "missing")
+        self.stt_status.setText(f"Parakeet · {state} · CPU int8 by default")
 
         self.keyring_status = QLabel(
             "OS keychain available." if keyring_available() else "OS keychain unavailable."
@@ -125,8 +127,6 @@ class SettingsPanel(QWidget):
         cfg.require_command_prefix = self.require_prefix.isChecked()
         cfg.enable_pop_click = self.pop_click.isChecked()
         cfg.gaze_cursor_control = self.eye_mouse.isChecked()
-        cfg.stt_engine = self.stt_engine.currentText()
-        cfg.whisper_model = self.whisper_model.text().strip() or "base.en"
         cfg.llm_preset = str(self.provider_preset.currentData() or "openai")
         cfg.llm_provider = "openai_compat"
         cfg.llm_model = self.llm_model.text().strip()

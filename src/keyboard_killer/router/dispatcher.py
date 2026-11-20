@@ -401,7 +401,7 @@ class VoiceCommandRouter:
             return DispatchResult("deterministic", raw, "close_window")
 
         # 0.6. Explicit next/previous window cycling: strip leading fillers ("a", "the", "and",
-        # "uh", "go to", "switch to", "move to") AND catch common Whisper beam=1 near-homophones
+        # "uh", "go to", "switch to", "move to") AND catch common STT near-homophones
         # ("text window", "net window", "nest window", "ex window") so they NEVER open OS search!
         stripped_win = re.sub(
             r"^(?:(?:uh|um|and|a|an|the|to|go\s+to|switch\s+to|move\s+to)\s+)+",

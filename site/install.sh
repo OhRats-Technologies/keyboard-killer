@@ -8,7 +8,7 @@
 set -eu
 
 REPO="OhRats-Technologies/keyboard-killer"
-RELEASE_BASE="${KEYBOARD_KILLER_RELEASE_BASE:-https://keyboard-killer.ohrats.party/releases}"
+RELEASE_BASE="${KEYBOARD_KILLER_RELEASE_BASE:-https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download}"
 ASSET_DEB="keyboard-killer_amd64.deb"
 ASSET_APPIMAGE="keyboard-killer-x86_64.AppImage"
 SUMS="SHA256SUMS"

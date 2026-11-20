@@ -1,12 +1,11 @@
 [project]
 name = "keyboard-killer"
-version = "0.1.0"
+version = "0.1.1"
 description = "Dual-camera stereo gaze tracking, pop-click detection, and voice/AI control for Linux Wayland"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "evdev>=2.0.0",
-    "faster-whisper>=1.2.1",
     "httpx>=0.28.1",
     "jeepney>=0.9.0",
     "keyring>=25.7.0",

@@ -48,7 +48,7 @@ class GroundingSelection(BaseModel):
 
 @dataclass(frozen=True)
 class ParsedVoiceIntent:
-    """Parsed action verb and target description from faster-whisper transcript."""
+    """Parsed action verb and target description from a speech transcript."""
 
     action: Literal["click", "double_click", "right_click", "hover", "type_into"]
     target_query: str

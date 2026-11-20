@@ -330,11 +330,7 @@ def detect_capabilities(
     )
     report.set(audio)
     report.set(
-        probe_module(
-            "faster_whisper",
-            Capability.STT,
-            "faster-whisper fallback STT",
-        )
+        probe_module("onnx_asr", Capability.STT, "Parakeet ONNX STT")
     )
     report.set(screen)
     report.set(probe_accessibility())

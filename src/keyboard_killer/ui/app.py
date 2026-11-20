@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QCloseEvent
+from PySide6.QtGui import QAction, QCloseEvent, QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -33,10 +33,10 @@ from keyboard_killer.ui.onboarding.flow import OnboardingFlow
 from keyboard_killer.ui.onboarding.steps import OnboardingWindow
 from keyboard_killer.ui.session import NullController, SessionController, SessionState
 from keyboard_killer.ui.settings.window import SettingsPanel
-from keyboard_killer.ui.theme.tokens import ThemeName, stylesheet, tokens_for
+from keyboard_killer.ui.theme.tokens import ThemeName, load_bundled_fonts, stylesheet, tokens_for
 from keyboard_killer.voice.stt.factory import stt_report
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 
 class HomePanel(QWidget):
@@ -48,7 +48,10 @@ class HomePanel(QWidget):
         title = QLabel("Keyboard-Killer")
         title.setObjectName("Title")
         layout.addWidget(title)
-        self.status = QLabel("Stopped")
+        eyebrow = QLabel("LOCAL GAZE + VOICE")
+        eyebrow.setObjectName("Eyebrow")
+        layout.addWidget(eyebrow)
+        self.status = QLabel("STOPPED")
         self.status.setObjectName("Pill")
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status.setMaximumWidth(220)
@@ -59,7 +62,7 @@ class HomePanel(QWidget):
         layout.addWidget(self.detail)
 
         actions = QHBoxLayout()
-        self.primary = QPushButton("Start listening")
+        self.primary = QPushButton("START LISTENING")
         self.primary.setObjectName("Primary")
         self.primary.clicked.connect(self.toggle)
         actions.addWidget(self.primary)
@@ -86,10 +89,12 @@ class HomePanel(QWidget):
 
     def refresh(self) -> None:
         status = self.window.controller.status
-        self.status.setText(status.state.value.capitalize())
+        self.status.setText(status.state.value.upper())
         self.detail.setText(status.detail or "Ready.")
         self.primary.setText(
-            "Start listening" if status.state in (SessionState.STOPPED, SessionState.ERROR, SessionState.PAUSED) else "Pause"
+            "START LISTENING"
+            if status.state in (SessionState.STOPPED, SessionState.ERROR, SessionState.PAUSED)
+            else "PAUSE"
         )
         recent = self.window.history.recent(1)
         if recent:
@@ -109,6 +114,20 @@ class HomePanel(QWidget):
             self.window.controller.start()
         self.refresh()
         self.window.refresh_tray()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        super().paintEvent(event)
+        tokens = self.window.theme_tokens
+        color = QColor(tokens.border)
+        color.setAlpha(28)
+        painter = QPainter(self)
+        painter.setPen(QPen(color, 1))
+        step = 40
+        for x in range(0, self.width(), step):
+            painter.drawLine(x, 0, x, self.height())
+        for y in range(0, self.height(), step):
+            painter.drawLine(0, y, self.width(), y)
+        painter.end()
 
 
 class CamerasPanel(QWidget):
@@ -191,8 +210,7 @@ class ModelsPanel(QWidget):
         self.body.setText(
             f"Selected: {report.get('selected')}\n"
             f"Parakeet: {parakeet.get('state', 'unknown')}\n"
-            f"Parakeet path: {parakeet.get('path', '')}\n"
-            f"Whisper fallback: {'installed' if report.get('whisper', {}).get('available') else 'missing'}"
+            f"Parakeet path: {parakeet.get('path', '')}"
         )
 
 
@@ -235,7 +253,8 @@ class AboutPanel(QWidget):
             f"Keyboard-Killer {VERSION}\n\n"
             "Dual-camera stereo gaze, pop-click, and voice control.\n"
             "Speech: NVIDIA Parakeet TDT 0.6B v2 (CC-BY-4.0), ONNX export by istupakov.\n"
-            "Camera and speech processing stay on this device. Optional AI providers are chosen by you."
+            "Camera and speech processing stay on this device. Optional AI providers are chosen by you.\n\n"
+            "Type: Inter and Space Mono (SIL Open Font License)."
         )
         text.setWordWrap(True)
         layout.addWidget(text)
@@ -282,8 +301,8 @@ class MainWindow(QMainWindow):
         sidebar.setFixedWidth(224)
         side_layout = QVBoxLayout(sidebar)
         side_layout.setContentsMargins(12, 16, 12, 16)
-        wordmark = QLabel("Keyboard-Killer")
-        wordmark.setObjectName("Heading")
+        wordmark = QLabel("KEYBOARD-KILLER")
+        wordmark.setObjectName("Wordmark")
         side_layout.addWidget(wordmark)
         side_layout.addSpacing(12)
         self.nav = QListWidget()
@@ -292,12 +311,13 @@ class MainWindow(QMainWindow):
         self.nav.setCurrentRow(0)
         self.nav.currentRowChanged.connect(self._select)
         side_layout.addWidget(self.nav, 1)
-        self.side_state = QLabel("Stopped")
-        self.side_state.setObjectName("Muted")
+        self.side_state = QLabel("STOPPED")
+        self.side_state.setObjectName("Mono")
         side_layout.addWidget(self.side_state)
         row.addWidget(sidebar)
 
         content = QWidget()
+        content.setObjectName("Content")
         self.stack = QStackedWidget()
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(24, 20, 24, 20)
@@ -319,7 +339,8 @@ class MainWindow(QMainWindow):
         for name in self.PAGES:
             self.stack.addWidget(self.pages[name])
 
-        self.statusBar().showMessage("Ready")
+        self.statusBar().showMessage("READY")
+        load_bundled_fonts()
         self.set_theme(theme or ThemeName.LIGHT)
         self.refresh_tray()
 
@@ -365,7 +386,7 @@ class MainWindow(QMainWindow):
 
     def refresh_tray(self) -> None:
         status = self.controller.status
-        self.side_state.setText(status.state.value.capitalize())
+        self.side_state.setText(status.state.value.upper())
         if self.tray is not None:
             self.tray.set_state(status.state, status.detail)
 
@@ -391,6 +412,7 @@ def run_ui(
     from keyboard_killer.ui.tray import Tray
 
     app = QApplication.instance() or QApplication([])
+    load_bundled_fonts()
     app.setApplicationName("Keyboard-Killer")
     app.setApplicationDisplayName("Keyboard-Killer")
     resolved_theme = theme or system_theme_name(app)

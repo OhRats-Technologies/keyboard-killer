@@ -68,7 +68,7 @@
           <h2>One command</h2>
           <p>On Debian or Ubuntu, the installer uses the self-contained <code>.deb</code> and <code>apt</code>. On other Linux distributions it installs the AppImage for the current user.</p>
           <pre><code>curl -fsSL https://keyboard-killer.ohrats.party/install.sh | sh</code></pre>
-          <p>Both paths verify the published <code>SHA256SUMS</code>. The <code>.deb</code> includes the <code>/dev/uinput</code> udev rule, a desktop entry, and an optional systemd user unit.</p>
+          <p>Both paths verify the published <code>SHA256SUMS</code>; the binaries are hosted on GitHub and mirrored on this site. The <code>.deb</code> includes the <code>/dev/uinput</code> udev rule, a desktop entry, and an optional systemd user unit.</p>
         </section>
 
         <section id="requirements">
@@ -89,7 +89,7 @@
             <li>Permissions: camera, microphone, input devices, screen capture.</li>
             <li>Cameras: choose two stable <code>/dev/v4l/by-id</code> devices.</li>
             <li>Calibration: the full-screen target window. Calibration is required before vision starts.</li>
-            <li>Speech: download the pinned Parakeet model (about 630 MB) or keep the Whisper fallback.</li>
+            <li>Speech: download the pinned Parakeet model (about 630 MB); it is the only speech engine.</li>
             <li>Optional AI provider, practice, and ready.</li>
           </ol>
           <p>Setup progress is stored in <code>onboarding.json</code>; closing the app does not restart the flow.</p>

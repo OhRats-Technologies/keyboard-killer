@@ -11,8 +11,9 @@ status() -> SttStatus                          # name, ready, device, compute_ty
 close()
 ```
 
-`create_stt_engine` prefers Parakeet when its verified files are present and
-falls back to faster-whisper without blocking the daemon. The setting is `stt_engine` in `settings.json` (`auto|parakeet|whisper`).
+`create_stt_engine` loads the verified Parakeet files and raises an actionable
+`SttModelMissing` if they are absent. There is no fallback engine and no
+`stt_engine` setting. The setup/Models surfaces offer only the pinned download.
 
 ## Pinned Parakeet model
 
@@ -30,9 +31,8 @@ re-hashes the files. Existing complete files are reused; a corrupt file is kept
 as `.corrupt-<timestamp>` instead of being deleted.
 
 CPU int8 is the default (`CPUExecutionProvider`). CUDA is opt-in with
-`stt_provider: "cuda"` and requires the CUDA onnxruntime provider. The old
-cuBLAS preload is no longer on the default path; the faster-whisper wrapper only
-calls it when CUDA is explicitly requested.
+`stt_provider: "cuda"` and requires the CUDA onnxruntime provider. There is no
+fallback wrapper or cuBLAS preload.
 
 ## Benchmark
 
@@ -46,8 +46,8 @@ Method:
   `FluentSpeechCommands` sources, holdout split). The clips are smart-home
   commands ("turn on the lights", "play a song", ...), not desktop commands.
   They are not redistributed in this repository.
-- Both engines loaded once with a warm-up, then each clip transcribed in
-  sequence on CPU int8. Latency is wall time around `transcribe`.
+- Parakeet loaded once with a warm-up, then each clip transcribed in sequence
+  on CPU int8. Latency is wall time around `transcribe`.
 - Exact match after lowercase/punctuation normalization; WER is word-level
   Levenshtein ÷ expected words.
 
@@ -56,12 +56,10 @@ Results:
 | Engine | TTS exact | TTS WER | TTS median | TTS p95 | Real exact | Real WER | Real median | Real p95 | Real RTF |
 |---|---|---|---|---|---|---|---|---|---|
 | Parakeet TDT 0.6B v2 | 100% | 0.000 | 170 ms | 198 ms | 92.5% | 0.025 | 245 ms | 260 ms | 0.049 |
-| faster-whisper base.en | 100% | 0.000 | 313 ms | 338 ms | 92.5% | 0.058 | 319 ms | 347 ms | 0.067 |
 
-Raw per-clip results are in [stt-benchmark-tts.json](stt-benchmark-tts.json) and [stt-benchmark-real.json](stt-benchmark-real.json). Parakeet is faster on both sets and has lower WER on the real human clips. The
-exact-match rate is equal because both make one lexical error on different
-clips: Parakeet heard "Pause the song" for "Pause this song"; Whisper hallucinated
-"Bye" for "Time" and "Post" for "Pause".
+Raw per-clip results are in [stt-benchmark-tts.json](stt-benchmark-tts.json) and [stt-benchmark-real.json](stt-benchmark-real.json). Parakeet was faster and had lower WER than the 0.1.0 `base.en` comparison. The
+0.1.1 release removes `base.en`; the historical per-clip results remain in the
+JSON files below.
 
 ## Gaps
 
@@ -71,10 +69,10 @@ clips: Parakeet heard "Pause the song" for "Pause this song"; Whisper hallucinat
   the benchmark uses files rather than over-the-air recordings.
 - CUDA, DirectML, CoreML, and macOS/Windows execution were not tested. Only CPU
   int8 on this Linux machine is verified.
-- Parakeet does not expose Whisper's `no_speech_prob`/`avg_logprob`; the listener
-  keeps its VAD and lexical gates, and Parakeet results carry neutral confidence.
-- Whisper `initial_prompt` vocabulary biasing is not used by the fallback; the
-  dispatcher's fuzzy matching remains the command robustness layer.
+- Parakeet does not expose `no_speech_prob`/`avg_logprob`; the listener keeps its
+  VAD and lexical gates, and Parakeet results carry neutral confidence.
+- Parakeet has no `initial_prompt` vocabulary biasing; the dispatcher's fuzzy
+  matching remains the command robustness layer.
 
 ## Reproduce
 
@@ -82,7 +80,7 @@ clips: Parakeet heard "Pause the song" for "Pause this song"; Whisper hallucinat
 uv run keyboard-killer models download stt
 uv run keyboard-killer models verify stt
 uv run keyboard-killer test-audio --seconds 5 --transcribe
-uv run python scripts/stt_benchmark.py /path/to/manifest.json --engine both
+uv run python scripts/stt_benchmark.py /path/to/manifest.json --engine parakeet
 ```
 
 Manifest format: `[{"wav": "...", "text": "expected words"}, ...]`.

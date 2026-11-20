@@ -54,12 +54,10 @@ class AppConfig:
     use_gpu: bool = True
     # Phase 2: audio pop-click, speech-to-text, and LLM routing
     ptt_hotkey: str = "KEY_RIGHTCTRL"
-    # D10: Parakeet is preferred; faster-whisper is the automatic fallback.
-    stt_engine: str = "auto"
+    # D10: Parakeet is the only STT engine.
     stt_model_id: str = "parakeet-tdt-0.6b-v2"
     stt_quantization: str = "int8"
     stt_provider: str = "cpu"
-    whisper_model: str = "base.en"
     llm_backend: str = "auto"
     llm_provider: str = "auto"
     llm_preset: str = "openai"

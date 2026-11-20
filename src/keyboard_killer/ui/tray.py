@@ -5,21 +5,22 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from keyboard_killer.ui.session import SessionState
 
 
-def make_icon(color: str = "#2f6fed") -> QIcon:
+def make_icon(background: str = "#1a1a1b", foreground: str = "#efede5") -> QIcon:
+    """Monochrome tray mark in the OhRats palette (sharp square, no brand blue)."""
     pixmap = QPixmap(64, 64)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setBrush(QColor(color))
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.drawEllipse(QRect(4, 4, 56, 56))
-    painter.setPen(QColor("#ffffff"))
+    painter.setBrush(QColor(background))
+    painter.setPen(QPen(QColor(foreground), 2))
+    painter.drawRect(QRect(4, 4, 56, 56))
+    painter.setPen(QColor(foreground))
     font = painter.font()
     font.setBold(True)
     font.setPixelSize(30)

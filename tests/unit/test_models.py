@@ -25,8 +25,7 @@ from keyboard_killer.models.downloader import ChecksumMismatch, DownloadError, d
 from keyboard_killer.models.receipts import ModelReceipt
 from keyboard_killer.models.store import ModelState, ModelStore
 from keyboard_killer.voice.stt.base import SttEngine, SttResult, SttStatus
-from keyboard_killer.voice.stt.factory import create_stt_engine, stt_report
-from keyboard_killer.voice.stt.whisper import WhisperSTTEngine
+from keyboard_killer.voice.stt.factory import SttModelMissing, create_stt_engine, stt_report
 
 
 def _sha(data: bytes) -> str:
@@ -218,37 +217,6 @@ def test_store_reports_partial_and_detects_corruption(tmp_path: Path) -> None:
     assert store.status(asset, verify_hashes=True).state is ModelState.CORRUPT
 
 
-def test_whisper_defaults_to_cpu_int8_without_cuda_preload(monkeypatch) -> None:
-    calls: list[tuple[Any, ...]] = []
-
-    class FakeModel:
-        def __init__(self, model_size: str, device: str, compute_type: str) -> None:
-            calls.append((model_size, device, compute_type))
-
-        def transcribe(self, audio: np.ndarray, **_kwargs: Any):
-            seg = SimpleNamespace(text="click send", no_speech_prob=0.05, avg_logprob=-0.2)
-            return iter([seg]), SimpleNamespace()
-
-    fake_module = SimpleNamespace(WhisperModel=FakeModel)
-    monkeypatch.setitem(sys.modules, "faster_whisper", fake_module)
-
-    import keyboard_killer.voice.stt.whisper as whisper_module
-
-    def _must_not_preload() -> None:
-        raise AssertionError("CUDA preload must not run on the default path")
-
-    monkeypatch.setattr(whisper_module, "_preload_cuda_libs", _must_not_preload)
-    engine = WhisperSTTEngine(model_size="base.en")
-    result = engine.transcribe_detailed(np.ones(16000, dtype=np.float32) * 0.1)
-
-    assert calls[0] == ("base.en", "cpu", "int8")
-    assert engine.device == "cpu"
-    assert engine.compute_type == "int8"
-    assert result.text == "click send"
-    assert result.avg_logprob == -0.2
-    assert result.latency_ms >= 0.0
-
-
 def test_parakeet_uses_local_int8_files_and_cpu_provider(monkeypatch, tmp_path: Path) -> None:
     calls: dict[str, Any] = {}
 
@@ -277,26 +245,16 @@ def test_parakeet_uses_local_int8_files_and_cpu_provider(monkeypatch, tmp_path: 
     assert engine.device == "cpu"
 
 
-def test_factory_falls_back_to_whisper_when_parakeet_is_missing(tmp_path: Path, monkeypatch) -> None:
-    import keyboard_killer.voice.stt.factory as factory
-
-    marker = SimpleNamespace(status=lambda: SttStatus("fake", True, "cpu", "int8", "fake"))
-
-    def fake_whisper(config: Any):
-        return marker
-
-    monkeypatch.setattr(factory, "_whisper_engine", fake_whisper)
+def test_factory_requires_the_downloaded_parakeet_model(tmp_path: Path) -> None:
     from keyboard_killer.config import AppConfig
 
-    cfg = AppConfig(stt_engine="parakeet")
-    selection = create_stt_engine(cfg, paths=_paths(tmp_path))
-    assert selection.engine is marker
-    assert selection.fell_back
-    assert "Parakeet is missing" in selection.fallback_reason
+    cfg = AppConfig()
+    with pytest.raises(SttModelMissing, match="models download stt"):
+        create_stt_engine(cfg, paths=_paths(tmp_path))
 
     report = stt_report(cfg, paths=_paths(tmp_path))
     assert report["requested"] == "parakeet"
-    assert report["selected"] == "whisper"
+    assert report["selected"] == "missing"
     assert report["parakeet"]["state"] == "missing"
 
 

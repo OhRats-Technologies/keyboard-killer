@@ -14,6 +14,9 @@ def qapp():
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
+    from keyboard_killer.ui.theme.tokens import load_bundled_fonts
+
+    load_bundled_fonts()
     app.setApplicationName("Keyboard-Killer-Tests")
     yield app
     app.processEvents()

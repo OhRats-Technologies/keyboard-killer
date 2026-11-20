@@ -37,6 +37,7 @@ from keyboard_killer.models.providers.openai_compat import OpenAICompatProvider
 from keyboard_killer.models.providers.presets import load_presets
 from keyboard_killer.models.providers.secrets import keyring_available, set_secret
 from keyboard_killer.platform.linux.cameras import discover_v4l_by_id
+from keyboard_killer.ui.theme.tokens import load_bundled_fonts
 from keyboard_killer.ui.onboarding.flow import (
     OPTIONAL_STEPS,
     OnboardingFlow,
@@ -403,7 +404,7 @@ class SttPage(StepPage):
         self.paths = paths
         self.title.setText("Speech")
         self.subtitle.setText(
-            "Parakeet is the app-owned English model. It runs on the CPU; the Whisper fallback stays available."
+            "Parakeet is the app-owned English model. It runs on the CPU and is the only speech engine."
         )
         self.status = QLabel("")
         self.status.setWordWrap(True)
@@ -417,9 +418,6 @@ class SttPage(StepPage):
         self.download_button.setObjectName("Primary")
         self.download_button.clicked.connect(self.download)
         actions.addWidget(self.download_button)
-        self.whisper_button = QPushButton("Use Whisper fallback")
-        self.whisper_button.clicked.connect(self.use_whisper)
-        actions.addWidget(self.whisper_button)
         actions.addStretch(1)
         self.body.addLayout(actions)
         self.body.addStretch(1)
@@ -430,10 +428,7 @@ class SttPage(StepPage):
         report = stt_report(self.config, paths=self.paths)
         parakeet = report.get("parakeet", {})
         state = parakeet.get("state", "unknown") if isinstance(parakeet, dict) else "unknown"
-        self.status.setText(
-            f"Selected: {report.get('selected')} | Parakeet: {state} | "
-            f"Whisper fallback: {'installed' if report.get('whisper', {}).get('available') else 'missing'}"
-        )
+        self.status.setText(f"Parakeet: {state} · {report.get('parakeet', {}).get('path', '')}")
         self.status.setObjectName("Success" if state == "ready" else "Warning")
         self.download_button.setEnabled(state != "ready")
         self.download_button.setText("Model ready" if state == "ready" else "Download model (630 MB)")
@@ -466,15 +461,10 @@ class SttPage(StepPage):
         self.progress.setVisible(False)
         self.problem.setText(f"Download failed: {message}")
 
-    def use_whisper(self) -> None:
-        self.config.stt_engine = "whisper"
-        self.config.save(self.paths.settings_path)
-        self.refresh()
-
     def validate(self) -> tuple[bool, str]:
         report = stt_report(self.config, paths=self.paths)
-        if report.get("selected") == "unavailable":
-            return False, "Download Parakeet or install the Whisper fallback."
+        if report.get("selected") != "parakeet":
+            return False, "Download the pinned Parakeet model to continue."
         return True, ""
 
     def close_worker(self) -> None:
@@ -629,6 +619,7 @@ class OnboardingWindow(QDialog):
         calibration_runner: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
+        load_bundled_fonts()
         self.paths = paths or current_paths()
         self.config = config or AppConfig.load(self.paths.settings_path)
         self.flow = flow or OnboardingFlow(self.paths)
@@ -654,7 +645,7 @@ class OnboardingWindow(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
         self.step_label = QLabel("")
-        self.step_label.setObjectName("Muted")
+        self.step_label.setObjectName("Mono")
         layout.addWidget(self.step_label)
         layout.addWidget(self.stack, 1)
 

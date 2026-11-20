@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import glob
 import gzip
+import re
 import os
 import shutil
 import subprocess
@@ -21,7 +22,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PACKAGING = ROOT / "packaging" / "linux"
 BUILD = ROOT / "build" / "linux"
-VERSION = "0.1.0"
+VERSION = re.search(
+    r'^version = "([^"]+)"$',
+    (ROOT / "pyproject.toml").read_text(),
+    flags=re.MULTILINE,
+).group(1)
 ARCH = "amd64"
 PACKAGE = "keyboard-killer"
 

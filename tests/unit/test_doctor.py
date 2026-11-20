@@ -68,7 +68,7 @@ def test_doctor_report_serializes_and_matches_ui_fields(tmp_path: Path) -> None:
     assert payload["cameras"]["configured"]["cam2"]["exists"] is False
     assert payload["audio"]["inputs"][0]["name"] == "USB Mic"
     assert payload["audio"]["default"] == [2, 5]
-    assert payload["stt"]["selected"] in {"parakeet", "whisper", "unavailable"}
+    assert payload["stt"]["selected"] in {"parakeet", "missing", "unavailable"}
     assert payload["providers"]["text_llm"]["status"]["state"] == "not_checked"
     assert payload["keychain"]["service"] == "keyboard-killer"
     assert "Keyboard-Killer" in format_text(report)

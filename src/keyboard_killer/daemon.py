@@ -26,7 +26,7 @@ from keyboard_killer.router.dispatcher import VoiceCommandRouter
 from keyboard_killer.router.gaze_vlm_clicker import GazeVLMClicker
 from keyboard_killer.models.providers.roles import resolve_gaze_vlm_role, resolve_text_role
 from keyboard_killer.routing.llm import LLMAgent
-from keyboard_killer.voice.stt.factory import create_stt_engine
+from keyboard_killer.voice.stt.factory import SttModelMissing, create_stt_engine
 from keyboard_killer.vision.calibrator import (
     StereoGazeModel,
     append_harvested_calibration_samples,
@@ -249,10 +249,11 @@ def run_combined_daemon(
                         mon.x + mon.width * 0.5, mon.y + mon.height * 0.5, None
                     )
 
-            stt_selection = create_stt_engine(config)
-            stt = stt_selection.engine
-            if stt_selection.fell_back:
-                out.print(f"[yellow]STT fallback: {stt_selection.fallback_reason}[/yellow]")
+            try:
+                stt = create_stt_engine(config).engine
+            except SttModelMissing as exc:
+                out.print(f"[red]{exc}[/red]")
+                return
             out.print(
                 f"STT: {stt.status().name} ({stt.status().device}/{stt.status().compute_type})"
             )
@@ -261,7 +262,6 @@ def run_combined_daemon(
                 active_listener = ActiveVoiceListener(
                     on_speech_onset=_prewarm_gaze_vlm,
                     is_user_attending=_is_user_attending if enable_vision else None,
-                    whisper_model_size=config.whisper_model,
                     enable_pop_click=config.enable_pop_click,
                     require_command_prefix=(config.require_command_prefix and not dictate_unprefixed),
                     audio_device=config.audio_device,

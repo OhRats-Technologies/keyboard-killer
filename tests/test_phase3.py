@@ -31,6 +31,7 @@ from keyboard_killer.vision.calibrator import (
 from keyboard_killer.vision.cursor_gimbal import GazeGimbalController
 from keyboard_killer.vision.landmarks import STEREO_FEATURE_DIM
 from keyboard_killer.vision.ui_detector import GazeUIDetector, WaylandScreenCapturer
+from keyboard_killer.voice.stt.base import SttResult
 
 
 def _make_desktop_image() -> np.ndarray:
@@ -331,11 +332,10 @@ def test_active_voice_listener_attention_onset_gates_and_sleep() -> None:
         ("Type hello world.", 0.05, -0.15),  # Accepted after wake up
     ]
 
-    class _StubWhisper:
-        def transcribe(self, _audio: np.ndarray, **_kwargs: Any):
+    class _StubStt:
+        def transcribe_detailed(self, _audio: np.ndarray) -> SttResult:
             txt, no_sp, lp = scripted_results.pop(0)
-            seg = SimpleNamespace(text=txt, no_speech_prob=no_sp, avg_logprob=lp)
-            return iter([seg]), SimpleNamespace()
+            return SttResult(text=txt, no_speech_prob=no_sp, avg_logprob=lp)
 
     attending = [False]
     onsets: list[float] = []
@@ -344,7 +344,7 @@ def test_active_voice_listener_attention_onset_gates_and_sleep() -> None:
         is_user_attending=lambda: attending[0],
         enable_pop_click=False,
         require_command_prefix=True,
-        whisper_model=_StubWhisper(),
+        stt_engine=_StubStt(),
     )
 
     worker = threading.Thread(target=listener._process_loop, daemon=True)
@@ -405,21 +405,20 @@ def test_active_voice_listener_adaptive_pause_prevents_chopping() -> None:
 
     transcribed_lengths: list[int] = []
 
-    class _StubWhisper:
-        def transcribe(self, audio: np.ndarray, **_kwargs: Any):
+    class _StubStt:
+        def transcribe_detailed(self, audio: np.ndarray) -> SttResult:
             transcribed_lengths.append(len(audio))
-            seg = SimpleNamespace(
+            return SttResult(
                 text="Click gemini ask question box.",
                 no_speech_prob=0.04,
                 avg_logprob=-0.12,
             )
-            return iter([seg]), SimpleNamespace()
 
     listener = ActiveVoiceListener(
         is_user_attending=lambda: True,
         enable_pop_click=False,
         require_command_prefix=True,
-        whisper_model=_StubWhisper(),
+        stt_engine=_StubStt(),
     )
     worker = threading.Thread(target=listener._process_loop, daemon=True)
     worker.start()
@@ -1047,20 +1046,19 @@ def test_active_listener_allows_app_window_suffix() -> None:
     import threading
     import time
 
-    class _StubWhisper:
-        def transcribe(self, _audio: np.ndarray, **_kwargs: Any):
-            seg = SimpleNamespace(
+    class _StubStt:
+        def transcribe_detailed(self, _audio: np.ndarray) -> SttResult:
+            return SttResult(
                 text="Antigravity window.",
                 no_speech_prob=0.05,
                 avg_logprob=-0.12,
             )
-            return iter([seg]), SimpleNamespace()
 
     listener = ActiveVoiceListener(
         is_user_attending=lambda: True,
         enable_pop_click=False,
         require_command_prefix=True,
-        whisper_model=_StubWhisper(),
+        stt_engine=_StubStt(),
     )
     worker = threading.Thread(target=listener._process_loop, daemon=True)
     worker.start()

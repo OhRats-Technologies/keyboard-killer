@@ -96,10 +96,17 @@ def test_onboarding_flow_persists_and_resumes(tmp_path: Path) -> None:
     assert json.loads(paths.onboarding_path.read_text())["version"] == 1
 
 
-def test_onboarding_window_resumes_and_reaches_ready(qapp, tmp_path: Path) -> None:
+def test_onboarding_window_resumes_and_reaches_ready(qapp, tmp_path: Path, monkeypatch) -> None:
     paths = _paths(tmp_path)
     calibration = paths.calibration_path
     calibration.write_text('{"rmse_x": 12.0}\n')
+    monkeypatch.setattr(
+        "keyboard_killer.ui.onboarding.steps.stt_report",
+        lambda *_a, **_k: {
+            "selected": "parakeet",
+            "parakeet": {"state": "ready", "path": str(paths.models_dir)},
+        },
+    )
     flow = OnboardingFlow(paths)
     flow.go_to(OnboardingStep.WELCOME)
     window = OnboardingWindow(
@@ -137,12 +144,12 @@ def test_settings_panel_saves_same_config(qapp, tmp_path: Path) -> None:
     panel = SettingsPanel(config, paths)
     panel.hotkey.setText("KEY_F9")
     panel.always_on.setChecked(False)
-    panel.stt_engine.setCurrentText("whisper")
+    assert not hasattr(panel, "whisper_model")
+    assert not hasattr(panel, "stt_engine")
     panel.save()
     loaded = AppConfig.load(paths.settings_path)
     assert loaded.ptt_hotkey == "KEY_F9"
     assert loaded.always_on_voice is False
-    assert loaded.stt_engine == "whisper"
     assert loaded.llm_provider == "openai_compat"
 
 

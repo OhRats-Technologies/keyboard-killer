@@ -8,7 +8,7 @@
 
 - **Paths and capabilities**: one `AppPaths` service for config/data/cache/logs, `KEYBOARD_KILLER_HOME`, a non-destructive one-time migration, shared platform protocols, and one `CapabilityReport` for onboarding, settings, diagnostics, and `doctor`.
 - **Platform seams**: uinput, evdev, V4L2, AT-SPI, screen capture, and Mutter layout live under `platform/linux/`. Windows and macOS expose tested stubs with `unsupported_platform` statuses.
-- **STT**: `SttEngine` contract, Parakeet TDT 0.6B v2 (CPU int8 default, CUDA opt-in), pinned catalog/downloader/receipts, and faster-whisper `base.en` fallback. The default CUDA preload is gone.
+- **STT**: `SttEngine` contract, Parakeet TDT 0.6B v2 (CPU int8 default, CUDA opt-in), pinned catalog/downloader/receipts. faster-whisper was removed in 0.1.1; Parakeet is the only engine.
 - **Providers**: `Provider` contract; `openai_compat` with presets, `ollama`, and `acp`; ACP registry fetch with cached/offline fallback; OS-keychain secrets; role capability checks; remote-VLM consent.
 - **Diagnostics**: `doctor` and `doctor --json` over the same report the UI uses.
 - **UI**: PySide6 main window, tray, resumable onboarding, settings, SQLite history, light/dark tokens, and the D3 X11 overlay / GNOME Wayland tray-toast fallback.

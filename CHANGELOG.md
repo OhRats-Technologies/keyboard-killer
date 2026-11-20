@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1] - 2026-11-20
+
+- Desktop app now uses the OhRats UI kit: Inter/Space Mono, warm neutrals,
+  sharp borders, one text-accent, light/dark tokens, and a grid home surface.
+- Removed the faster-whisper fallback. Parakeet is the only STT engine; the
+  speech step downloads the pinned model and no engine selector remains.
+- Release assets are public on GitHub and mirrored on the landing site.
+
 ## [0.1.0] - 2026-11-20
 
 First Linux product release.
