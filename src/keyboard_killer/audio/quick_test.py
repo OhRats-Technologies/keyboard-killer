@@ -18,6 +18,24 @@ SAMPLE_RATE = 16000
 
 
 @dataclass(frozen=True)
+class InputDevice:
+    index: int
+    name: str
+    channels: int
+
+
+@dataclass(frozen=True)
+class MicLevel:
+    peak: float
+    rms: float
+    seconds: float
+
+    @property
+    def heard(self) -> bool:
+        return self.peak >= 0.01
+
+
+@dataclass(frozen=True)
 class SpeechTestResult:
     transcript: str
     latency_ms: float
@@ -29,6 +47,34 @@ class SpeechTestResult:
     @property
     def has_speech(self) -> bool:
         return self.peak >= 0.01 and bool(self.transcript)
+
+
+def input_devices() -> list[InputDevice]:
+    """List PortAudio input devices without failing when the backend is absent."""
+    try:
+        import sounddevice as sd
+
+        devices = sd.query_devices()
+        result: list[InputDevice] = []
+        for index, device in enumerate(devices):
+            channels = int(device.get("max_input_channels", 0))
+            if channels > 0:
+                result.append(InputDevice(index, str(device.get("name", "")), channels))
+        return result
+    except Exception:
+        return []
+
+
+def check_microphone(
+    device: str | int | None = None,
+    *,
+    seconds: float = 1.5,
+) -> MicLevel:
+    """Record a short clip and report whether the selected input carries signal."""
+    audio = record_clip(seconds, device=device)
+    peak = float(np.max(np.abs(audio))) if audio.size else 0.0
+    rms = float(np.sqrt(np.mean(audio * audio))) if audio.size else 0.0
+    return MicLevel(peak=peak, rms=rms, seconds=seconds)
 
 
 def record_clip(
@@ -82,4 +128,14 @@ def run_speech_test(
     )
 
 
-__all__ = ["DEFAULT_SECONDS", "SAMPLE_RATE", "SpeechTestResult", "record_clip", "run_speech_test"]
+__all__ = [
+    "DEFAULT_SECONDS",
+    "InputDevice",
+    "MicLevel",
+    "SAMPLE_RATE",
+    "SpeechTestResult",
+    "check_microphone",
+    "input_devices",
+    "record_clip",
+    "run_speech_test",
+]

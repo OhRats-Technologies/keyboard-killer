@@ -277,3 +277,44 @@ def test_camera_page_supports_one_or_two_cameras(qapp, tmp_path: Path, monkeypat
         assert page.validate() == (True, "")
     finally:
         page.close_previews()
+
+
+def test_settings_panel_lists_and_saves_a_microphone(qapp, tmp_path, monkeypatch) -> None:
+    from keyboard_killer.audio.quick_test import InputDevice
+    from keyboard_killer.ui.settings.window import SettingsPanel
+
+    monkeypatch.setattr(
+        "keyboard_killer.ui.settings.window.input_devices",
+        lambda: [InputDevice(8, "Razer Seiren Mini", 1), InputDevice(7, "Webcam", 1)],
+    )
+    paths = _paths(tmp_path)
+    config = AppConfig()
+    panel = SettingsPanel(config, paths)
+    try:
+        assert panel.microphone.count() == 3
+        panel.microphone.setCurrentIndex(1)
+        panel.save()
+        assert AppConfig.load(paths.settings_path).audio_device == 8
+    finally:
+        panel.stop()
+
+
+def test_settings_mic_check_reports_signal(qapp, tmp_path, monkeypatch) -> None:
+    from keyboard_killer.audio.quick_test import MicLevel
+    from keyboard_killer.ui.settings.window import SettingsPanel
+
+    monkeypatch.setattr(
+        "keyboard_killer.ui.settings.window.check_microphone",
+        lambda device=None: MicLevel(peak=0.21, rms=0.05, seconds=1.5),
+    )
+    paths = _paths(tmp_path)
+    panel = SettingsPanel(AppConfig(), paths)
+    try:
+        panel.check_mic()
+        assert panel._mic_worker is not None
+        panel._mic_worker.wait(3000)
+        qapp.processEvents()
+        assert "HEARD" in panel.mic_result.text()
+        assert "0.210" in panel.mic_result.text()
+    finally:
+        panel.stop()

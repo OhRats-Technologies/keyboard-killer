@@ -69,7 +69,7 @@ class AppConfig:
     gemini_model: str = "gemini-2.5-flash"
     pop_min_peak: float = 0.25
     pop_min_rms: float = 0.032
-    audio_device: str | None = None
+    audio_device: int | str | None = None
     # Phase 3: Gaze-Foveated Voice + Vision Grounding & Always-On VAD
     gaze_cursor_control: bool = False
     gaze_vlm_enabled: bool = True

@@ -544,8 +544,9 @@ class ModelsPanel(QWidget):
         test_title.setObjectName("Heading")
         test.layout.addWidget(test_title)
         test_copy = QLabel(
-            "Records four seconds from the default microphone and runs the app-owned "
-            "Parakeet model on this device. No audio leaves the machine."
+            "Records four seconds from the microphone selected in Settings and runs the "
+            "app-owned Parakeet model on this device. Voice commands start with click, "
+            "scroll, type, press, tap, or move to."
         )
         test_copy.setObjectName("Muted")
         test_copy.setWordWrap(True)
@@ -927,6 +928,9 @@ class MainWindow(QMainWindow):
         models = getattr(self, "pages", {}).get("Models")
         if models is not None:
             models.stop_test()
+        settings = getattr(self, "pages", {}).get("Settings")
+        if settings is not None:
+            settings.stop()
         self.home.shutdown()
         self.controller.quit()
 

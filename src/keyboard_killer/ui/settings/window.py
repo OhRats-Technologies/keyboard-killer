@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -10,10 +11,16 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
+from keyboard_killer.audio.quick_test import (
+    MicLevel,
+    check_microphone,
+    input_devices,
+)
 from keyboard_killer.config.paths import AppPaths, current_paths
 from keyboard_killer.platform.linux.cameras import resolve_camera_config
 from keyboard_killer.ui.components import Card, eyebrow
@@ -21,6 +28,21 @@ from keyboard_killer.config.schema import AppConfig
 from keyboard_killer.models.providers.presets import load_presets
 from keyboard_killer.models.providers.secrets import keyring_available
 from keyboard_killer.platform.capabilities import detect_capabilities
+
+
+class MicCheckWorker(QThread):
+    done = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, device: int | str | None) -> None:
+        super().__init__()
+        self.device = device
+
+    def run(self) -> None:
+        try:
+            self.done.emit(check_microphone(self.device))
+        except Exception as exc:
+            self.failed.emit(str(exc))
 
 
 class SettingsPanel(QWidget):
@@ -32,8 +54,15 @@ class SettingsPanel(QWidget):
         super().__init__()
         self.paths = paths or current_paths()
         self.config = config or AppConfig.load(self.paths.settings_path)
-        layout = QVBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
+        scroll.setWidget(content)
+        root.addWidget(scroll)
 
         title = QLabel("Settings")
         title.setObjectName("Heading")
@@ -54,6 +83,23 @@ class SettingsPanel(QWidget):
         self.always_on = QCheckBox("Listen continuously (voice activity)")
         self.always_on.setChecked(self.config.always_on_voice)
         form.addRow("", self.always_on)
+
+        self.microphone = QComboBox()
+        self.microphone.setMinimumWidth(260)
+        self._populate_microphones()
+        mic_row = QHBoxLayout()
+        mic_row.addWidget(self.microphone, 1)
+        self.mic_test = QPushButton("CHECK MIC")
+        self.mic_test.clicked.connect(self.check_mic)
+        mic_row.addWidget(self.mic_test)
+        form.addRow("Microphone", mic_row)
+        self.mic_result = QLabel(
+            "Check the input, then Save. Pause and resume the daemon to apply it."
+        )
+        self.mic_result.setObjectName("Muted")
+        self.mic_result.setWordWrap(True)
+        form.addRow("", self.mic_result)
+        self._mic_worker: MicCheckWorker | None = None
 
         self.require_prefix = QCheckBox("Only act on command phrases")
         self.require_prefix.setChecked(self.config.require_command_prefix)
@@ -135,10 +181,61 @@ class SettingsPanel(QWidget):
         layout.addWidget(self.saved)
         layout.addStretch(1)
 
+    def _populate_microphones(self) -> None:
+        self.microphone.clear()
+        self.microphone.addItem("System default", None)
+        for device in input_devices():
+            self.microphone.addItem(device.name, device.index)
+        current = self.config.audio_device
+        if current is None:
+            return
+        index = self.microphone.findData(current)
+        if index < 0 and isinstance(current, str):
+            index = self.microphone.findText(current)
+        if index >= 0:
+            self.microphone.setCurrentIndex(index)
+
+    def check_mic(self) -> None:
+        if self._mic_worker is not None and self._mic_worker.isRunning():
+            return
+        self.mic_test.setEnabled(False)
+        self.mic_result.setObjectName("Muted")
+        self.mic_result.setText("LISTENING · 1.5 SECONDS")
+        worker = MicCheckWorker(self.microphone.currentData())
+        worker.done.connect(self._on_mic_done)
+        worker.failed.connect(self._on_mic_failed)
+        self._mic_worker = worker
+        worker.start()
+
+    def _on_mic_done(self, level: MicLevel) -> None:
+        self.mic_test.setEnabled(True)
+        self.mic_result.setObjectName("Success" if level.heard else "Warning")
+        self.mic_result.setText(
+            (
+                f"HEARD · PEAK {level.peak:.3f} · RMS {level.rms:.3f}"
+                if level.heard
+                else "NO SIGNAL · TRY ANOTHER MICROPHONE"
+            )
+        )
+        self.mic_result.style().unpolish(self.mic_result)
+        self.mic_result.style().polish(self.mic_result)
+
+    def _on_mic_failed(self, message: str) -> None:
+        self.mic_test.setEnabled(True)
+        self.mic_result.setObjectName("Warning")
+        self.mic_result.setText(message)
+        self.mic_result.style().unpolish(self.mic_result)
+        self.mic_result.style().polish(self.mic_result)
+
+    def stop(self) -> None:
+        if self._mic_worker is not None and self._mic_worker.isRunning():
+            self._mic_worker.wait(3000)
+
     def save(self) -> None:
         cfg = self.config
         cfg.ptt_hotkey = self.hotkey.text().strip() or "KEY_RIGHTCTRL"
         cfg.always_on_voice = self.always_on.isChecked()
+        cfg.audio_device = self.microphone.currentData()
         cfg.require_command_prefix = self.require_prefix.isChecked()
         cfg.enable_pop_click = self.pop_click.isChecked()
         cfg.gaze_cursor_control = self.eye_mouse.isChecked()
