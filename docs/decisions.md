@@ -19,7 +19,7 @@
 
 | ID | Status | Evidence / remaining gap |
 |---|---|---|
-| D1 | **Done** | PySide6 main window, tray, onboarding, settings, history, tokens, headless goldens |
+| D1 | **Done** | PySide6 control-room shell, tray, resumable onboarding, settings, history, tokens, headless goldens |
 | D2 | **Done** | App-owned Parakeet/landmarks; no bundled LLM; role-split providers |
 | D3 | **Done for Linux** | X11 click-through pill; Wayland tray/toast fallback with reason; no GNOME Shell extension |
 | D4 | **Done** | `config/paths.py`, `KEYBOARD_KILLER_HOME`, non-destructive migration; models in data, landmarker in cache |
