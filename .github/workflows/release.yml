@@ -99,8 +99,8 @@ jobs:
     env:
       KEYBOARD_KILLER_RELEASE_BASE: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
       KEYBOARD_KILLER_APPIMAGE: "1"
-      KEYBOARD_KILLER_APPIMAGE_DIR: ${{ runner.temp }}/keyboard-killer/app
-      KEYBOARD_KILLER_BIN_DIR: ${{ runner.temp }}/keyboard-killer/bin
+      KEYBOARD_KILLER_APPIMAGE_DIR: ${{ github.workspace }}/.install/app
+      KEYBOARD_KILLER_BIN_DIR: ${{ github.workspace }}/.install/bin
       APPIMAGE_EXTRACT_AND_RUN: "1"
     steps:
       - uses: actions/checkout@v4
