@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import importlib.metadata
 import os
+import time
 from datetime import datetime, timezone
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QCloseEvent, QColor, QPainter, QPen
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -19,6 +20,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QProgressBar,
     QPushButton,
     QStackedWidget,
     QTextEdit,
@@ -26,16 +28,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from keyboard_killer.audio.quick_test import DEFAULT_SECONDS, SpeechTestResult, run_speech_test
 from keyboard_killer.config.paths import AppPaths, current_paths
 from keyboard_killer.config.schema import AppConfig
 from keyboard_killer.diagnostics.doctor import collect_doctor, format_text
 from keyboard_killer.platform.linux.cameras import list_cameras, resolve_camera_config
+from keyboard_killer.platform.linux.display import get_display_layout
 from keyboard_killer.ui.components import Card, eyebrow, mono, status as status_label
+from keyboard_killer.ui.gaze_field import GazeField
 from keyboard_killer.ui.history.db import HistoryStore
 from keyboard_killer.ui.history.window import HistoryPanel
 from keyboard_killer.ui.onboarding.flow import OnboardingFlow
 from keyboard_killer.ui.onboarding.steps import OnboardingWindow
-from keyboard_killer.ui.session import NullController, SessionController, SessionState
+from keyboard_killer.ui.screen_cursor import ScreenCursor
+from keyboard_killer.ui.session import DaemonController, NullController, SessionController, SessionState
 from keyboard_killer.ui.settings.window import SettingsPanel
 from keyboard_killer.ui.theme.tokens import ThemeName, load_bundled_fonts, stylesheet, tokens_for
 from keyboard_killer.voice.stt.factory import stt_report
@@ -43,56 +49,11 @@ from keyboard_killer.voice.stt.factory import stt_report
 VERSION = "0.1.2"
 
 
-class GazeField(QWidget):
-    """Quiet instrument placeholder; never pretends to have live gaze data."""
-
-    def __init__(self, window: "MainWindow") -> None:
-        super().__init__()
-        self.window = window
-        self.live = False
-        self.setMinimumSize(240, 150)
-
-    def set_live(self, value: bool) -> None:
-        self.live = value
-        self.update()
-
-    def paintEvent(self, event) -> None:  # noqa: N802
-        from PySide6.QtGui import QColor, QPainter, QPen
-
-        tokens = self.window.theme_tokens
-        painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(tokens.surface))
-        line = QColor(tokens.border)
-        line.setAlpha(45)
-        painter.setPen(QPen(line, 1))
-        step = 20
-        for x in range(0, self.width(), step):
-            painter.drawLine(x, 0, x, self.height())
-        for y in range(0, self.height(), step):
-            painter.drawLine(0, y, self.width(), y)
-        cx, cy = self.width() // 2, self.height() // 2
-        painter.setPen(QPen(QColor(tokens.muted), 1))
-        painter.drawLine(cx - 12, cy, cx + 12, cy)
-        painter.drawLine(cx, cy - 12, cx, cy + 12)
-        painter.setPen(QPen(QColor(tokens.text), 1))
-        painter.drawRect(cx - 3, cy - 3, 6, 6)
-        painter.setPen(QColor(tokens.muted))
-        font = painter.font()
-        font.setPointSize(7)
-        painter.setFont(font)
-        painter.drawText(10, 16, "GAZE FIELD")
-        painter.drawText(
-            10,
-            self.height() - 12,
-            "WAITING FOR VISION" if not self.live else "LIVE",
-        )
-        painter.end()
-
-
 class HomePanel(QWidget):
     def __init__(self, window: "MainWindow") -> None:
         super().__init__()
         self.window = window
+        self._last_state: SessionState | None = None
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(40)
@@ -157,9 +118,14 @@ class HomePanel(QWidget):
         layout.addLayout(left, 3)
 
         instrument = Card()
-        instrument.setMaximumWidth(360)
-        instrument.layout.addWidget(eyebrow("INSTRUMENT"))
-        self.gaze_field = GazeField(window)
+        instrument.setMaximumWidth(390)
+        instrument.layout.addWidget(eyebrow("GAZE INSTRUMENT"))
+        layout_info = window.display_layout
+        self.gaze_field = GazeField(
+            window,
+            source_size=(layout_info.total_width, layout_info.total_height),
+        )
+        self.gaze_field.setMinimumHeight(190)
         instrument.layout.addWidget(self.gaze_field)
         self.rows = {}
         for key, label in (
@@ -177,15 +143,29 @@ class HomePanel(QWidget):
             row.addWidget(value)
             instrument.layout.addLayout(row)
             self.rows[key] = value
+
+        self.cursor_button = QPushButton("SHOW SCREEN CURSOR")
+        self.cursor_button.setCheckable(True)
+        self.cursor_button.clicked.connect(self._toggle_cursor)
+        instrument.layout.addWidget(self.cursor_button)
+        self.cursor_note = QLabel("A click-through cursor moves across the desktop.")
+        self.cursor_note.setObjectName("Mono")
+        self.cursor_note.setWordWrap(True)
+        instrument.layout.addWidget(self.cursor_note)
+
         details = QPushButton("VIEW DETAILS")
         details.clicked.connect(lambda: window.show_page("Diagnostics"))
         instrument.layout.addWidget(details)
         layout.addWidget(instrument, 2)
+        self.gaze_field.mode_changed.connect(self._on_gaze_mode)
+        self._cursor_timer = QTimer(self)
+        self._cursor_timer.setInterval(1000)
+        self._cursor_timer.timeout.connect(self._poll_cursor)
+        self._cursor_timer.start()
         self.refresh()
 
     def _set_state(self, state: str) -> None:
         self.state_label.setText(f"STATE · {state.upper()}")
-        self.gaze_field.set_live(state == "listening")
 
     def refresh(self) -> None:
         status = self.window.controller.status
@@ -245,6 +225,65 @@ class HomePanel(QWidget):
         self.rows["latency"].setText(f"{latency:.0f} MS" if latency else "—")
         self.rows["mic"].setText("READY" if status.state is SessionState.LISTENING else "OFF")
         self.window.primary_action = self.primary
+        self._sync_cursor_controls()
+
+    def _toggle_cursor(self, checked: bool) -> None:
+        if checked:
+            status = self.window.screen_cursor.start()
+            if not status.running:
+                self.cursor_button.blockSignals(True)
+                self.cursor_button.setChecked(False)
+                self.cursor_button.blockSignals(False)
+                self.cursor_note.setText(status.error or "Screen cursor unavailable.")
+                return
+        else:
+            self.window.screen_cursor.stop()
+        self._sync_cursor_controls()
+
+    def _poll_cursor(self) -> None:
+        status = self.window.screen_cursor.refresh()
+        if not status.running and self.cursor_button.isChecked():
+            self.cursor_button.blockSignals(True)
+            self.cursor_button.setChecked(False)
+            self.cursor_button.blockSignals(False)
+        if status.error:
+            self.cursor_note.setText(status.error)
+        elif status.running:
+            self._sync_cursor_controls()
+
+    def _sync_cursor_controls(self) -> None:
+        running = self.window.screen_cursor.running
+        self.cursor_button.blockSignals(True)
+        self.cursor_button.setChecked(running)
+        self.cursor_button.blockSignals(False)
+        self.cursor_button.setText("HIDE SCREEN CURSOR" if running else "SHOW SCREEN CURSOR")
+        if not running:
+            if not self.window.screen_cursor.error:
+                self.cursor_note.setText("A click-through cursor moves across the desktop.")
+            return
+        mode = self.gaze_field.mode
+        if mode == "live":
+            self.cursor_note.setText("ON · FOLLOWING LIVE GAZE")
+        elif mode == "no-face":
+            self.cursor_note.setText("ON · LIVE, NO FACE IN VIEW")
+        else:
+            self.cursor_note.setText("ON · DEMO PATH (NO VISION DATA)")
+
+    def _on_gaze_mode(self, _mode: str) -> None:
+        if self.window.screen_cursor.running:
+            self._sync_cursor_controls()
+
+    def poll_state(self) -> None:
+        state = self.window.controller.status.state
+        if state is not self._last_state:
+            self._last_state = state
+            self.refresh()
+            self.window.refresh_tray()
+
+    def shutdown(self) -> None:
+        self._cursor_timer.stop()
+        self.gaze_field.shutdown()
+        self.window.screen_cursor.stop()
 
     def toggle(self) -> None:
         status = self.window.controller.status
@@ -252,8 +291,8 @@ class HomePanel(QWidget):
             self.window.controller.pause()
         else:
             self.window.controller.start()
-        self.refresh()
-        self.window.refresh_tray()
+        self._last_state = None
+        self.poll_state()
 
 
 class SetupPanel(QWidget):
@@ -379,10 +418,36 @@ class CalibrationPanel(QWidget):
         self.advanced.setVisible(False)
 
 
+class SpeechTestWorker(QThread):
+    """Load Parakeet and transcribe one microphone clip off the UI thread."""
+
+    stage = Signal(str)
+    done = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, window: "MainWindow") -> None:
+        super().__init__(window)
+        self.window = window
+
+    def run(self) -> None:
+        try:
+            result = run_speech_test(
+                self.window.config,
+                paths=self.window.paths,
+                seconds=DEFAULT_SECONDS,
+                on_stage=self.stage.emit,
+            )
+            self.done.emit(result)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
 class ModelsPanel(QWidget):
     def __init__(self, window: MainWindow) -> None:
         super().__init__()
         self.window = window
+        self._worker: SpeechTestWorker | None = None
+        self._record_started = 0.0
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         head = QHBoxLayout()
@@ -410,7 +475,44 @@ class ModelsPanel(QWidget):
         self.path.setWordWrap(True)
         card.layout.addWidget(self.path)
         layout.addWidget(card)
+
+        test = Card()
+        test.layout.addWidget(eyebrow("LIVE SPEECH TEST"))
+        test_title = QLabel("Say something. Read the transcript.")
+        test_title.setObjectName("Heading")
+        test.layout.addWidget(test_title)
+        test_copy = QLabel(
+            "Records four seconds from the default microphone and runs the app-owned "
+            "Parakeet model on this device. No audio leaves the machine."
+        )
+        test_copy.setObjectName("Muted")
+        test_copy.setWordWrap(True)
+        test.layout.addWidget(test_copy)
+        self.test_status = QLabel("READY · LOCAL PARAKEET")
+        self.test_status.setObjectName("Mono")
+        test.layout.addWidget(self.test_status)
+        self.test_progress = QProgressBar()
+        self.test_progress.setRange(0, 100)
+        self.test_progress.setVisible(False)
+        test.layout.addWidget(self.test_progress)
+        self.test_transcript = QLabel("—")
+        self.test_transcript.setObjectName("Heading")
+        self.test_transcript.setWordWrap(True)
+        test.layout.addWidget(self.test_transcript)
+        self.test_detail = QLabel("")
+        self.test_detail.setObjectName("Mono")
+        self.test_detail.setWordWrap(True)
+        test.layout.addWidget(self.test_detail)
+        self.test_button = QPushButton("RECORD 4 SECONDS")
+        self.test_button.setObjectName("Primary")
+        self.test_button.clicked.connect(self.start_test)
+        test.layout.addWidget(self.test_button, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(test)
         layout.addStretch(1)
+
+        self._progress_timer = QTimer(self)
+        self._progress_timer.setInterval(100)
+        self._progress_timer.timeout.connect(self._tick_progress)
         self.refresh()
 
     def refresh(self) -> None:
@@ -420,6 +522,96 @@ class ModelsPanel(QWidget):
         self.status.setText("READY" if ready else "DOWNLOAD NEEDED")
         self.status.setObjectName("Success" if ready else "Warning")
         self.path.setText(f"FILE  {parakeet.get('path', '')}")
+        idle = self._worker is None or not self._worker.isRunning()
+        if not ready and idle:
+            self.test_status.setText("SPEECH MODEL MISSING · OPEN SETUP TO DOWNLOAD")
+            self.test_button.setEnabled(False)
+        elif idle:
+            self.test_button.setEnabled(True)
+
+    def start_test(self) -> None:
+        if self._worker is not None and self._worker.isRunning():
+            return
+        report = stt_report(self.window.config, paths=self.window.paths)
+        if report.get("selected") != "parakeet":
+            self.test_status.setText("SPEECH MODEL MISSING · OPEN SETUP TO DOWNLOAD")
+            return
+        self.test_transcript.setText("—")
+        self.test_detail.setText("")
+        self.test_progress.setVisible(True)
+        self.test_progress.setRange(0, 0)
+        self.test_button.setEnabled(False)
+        self.test_button.setText("TEST RUNNING")
+        self.test_status.setObjectName("Mono")
+        self.test_status.style().unpolish(self.test_status)
+        self.test_status.style().polish(self.test_status)
+        worker = SpeechTestWorker(self.window)
+        worker.stage.connect(self._on_stage)
+        worker.done.connect(self._on_done)
+        worker.failed.connect(self._on_failed)
+        self._worker = worker
+        worker.start()
+
+    def _on_stage(self, stage: str) -> None:
+        if stage == "loading":
+            self.test_status.setText("LOADING PARAKEET…")
+            self.test_progress.setRange(0, 0)
+        elif stage == "recording":
+            self._record_started = time.monotonic()
+            self.test_status.setText("RECORDING · SPEAK NOW")
+            self.test_progress.setRange(0, 100)
+            self.test_progress.setValue(0)
+            self._progress_timer.start()
+        elif stage == "transcribing":
+            self._progress_timer.stop()
+            self.test_progress.setRange(0, 0)
+            self.test_status.setText("TRANSCRIBING…")
+
+    def _tick_progress(self) -> None:
+        import time
+
+        elapsed = time.monotonic() - self._record_started
+        remaining = max(0.0, DEFAULT_SECONDS - elapsed)
+        self.test_progress.setValue(
+            min(100, int(100 * elapsed / max(0.1, DEFAULT_SECONDS)))
+        )
+        self.test_status.setText(f"RECORDING · {remaining:.1f}S LEFT")
+
+    def _on_done(self, result: SpeechTestResult) -> None:
+        self._progress_timer.stop()
+        self.test_progress.setVisible(False)
+        self.test_button.setEnabled(True)
+        self.test_button.setText("TEST AGAIN")
+        self.test_status.setText(
+            "HEARD · LOCAL PARAKEET" if result.has_speech else "NO SPEECH DETECTED"
+        )
+        self.test_status.setObjectName("Success" if result.has_speech else "Warning")
+        self.test_status.style().unpolish(self.test_status)
+        self.test_status.style().polish(self.test_status)
+        self.test_transcript.setText(
+            f"“{result.transcript}”" if result.transcript else "No words recognized."
+        )
+        self.test_detail.setText(
+            f"{result.latency_ms:.0f} MS · {result.recorded_s:.1f}S · "
+            f"PEAK {result.peak:.3f} · {result.engine} · {result.sample_rate} HZ"
+        )
+
+    def _on_failed(self, message: str) -> None:
+        self._progress_timer.stop()
+        self.test_progress.setVisible(False)
+        self.test_button.setEnabled(True)
+        self.test_button.setText("TRY AGAIN")
+        self.test_status.setText("TEST FAILED")
+        self.test_status.setObjectName("Warning")
+        self.test_status.style().unpolish(self.test_status)
+        self.test_status.style().polish(self.test_status)
+        self.test_transcript.setText("—")
+        self.test_detail.setText(message)
+
+    def stop_test(self) -> None:
+        self._progress_timer.stop()
+        if self._worker is not None and self._worker.isRunning():
+            self._worker.wait(8000)
 
 
 class DiagnosticsPanel(QWidget):
@@ -558,6 +750,7 @@ class MainWindow(QMainWindow):
         self.paths = paths or current_paths()
         self.config = config or AppConfig.load(self.paths.settings_path)
         self.controller = controller or NullController()
+        self.screen_cursor = ScreenCursor(paths=self.paths)
         self.flow = flow or OnboardingFlow(self.paths)
         self.enable_previews = enable_previews
         self.report_provider = report_provider
@@ -566,6 +759,8 @@ class MainWindow(QMainWindow):
         self.tray = None
         self.overlay = None
         self._flow_window: OnboardingWindow | None = None
+        self._display_layout = None
+        self._shutdown = False
 
         self.setWindowTitle("Keyboard-Killer")
         self.resize(1120, 720)
@@ -650,6 +845,28 @@ class MainWindow(QMainWindow):
         load_bundled_fonts()
         self.set_theme(theme or ThemeName.LIGHT)
         self.refresh_tray()
+        self._status_timer = QTimer(self)
+        self._status_timer.setInterval(1000)
+        self._status_timer.timeout.connect(self.home.poll_state)
+        self._status_timer.start()
+
+    @property
+    def display_layout(self):
+        if self._display_layout is None:
+            self._display_layout = get_display_layout()
+        return self._display_layout
+
+    def shutdown(self) -> None:
+        if self._shutdown:
+            return
+        self._shutdown = True
+        if hasattr(self, "_status_timer"):
+            self._status_timer.stop()
+        models = getattr(self, "pages", {}).get("Models")
+        if models is not None:
+            models.stop_test()
+        self.home.shutdown()
+        self.controller.quit()
 
     def _build_nav(self) -> None:
         groups = (
@@ -750,7 +967,7 @@ class MainWindow(QMainWindow):
             event.ignore()
             self.hide()
             return
-        self.controller.quit()
+        self.shutdown()
         super().closeEvent(event)
 
 
@@ -774,10 +991,11 @@ def run_ui(
     window = MainWindow(
         paths=paths,
         config=config,
-        controller=controller,
+        controller=controller or DaemonController(paths=paths),
         theme=resolved_theme,
         enable_previews=enable_previews,
     )
+    app.aboutToQuit.connect(window.shutdown)
     tray = Tray(
         window=window,
         on_open=window.show,

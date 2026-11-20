@@ -15,7 +15,11 @@ from keyboard_killer.config.schema import (
 )
 from keyboard_killer.platform.base import DisplayLayout, MonitorInfo
 from keyboard_killer.platform.linux.cameras import discover_v4l_by_id
-from keyboard_killer.platform.linux.display import get_display_layout, parse_mutter_display_state
+from keyboard_killer.platform.linux.display import (
+    get_display_layout,
+    parse_kscreen_layout,
+    parse_mutter_display_state,
+)
 
 __all__ = [
     "CACHE_DIR",
@@ -36,5 +40,6 @@ __all__ = [
     "discover_v4l_by_id",
     "ensure_migrated",
     "get_display_layout",
+    "parse_kscreen_layout",
     "parse_mutter_display_state",
 ]

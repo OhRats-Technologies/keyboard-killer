@@ -1,7 +1,15 @@
-"""GNOME Mutter logical monitor layout (Linux)."""
+"""Desktop logical monitor layout (Linux).
+
+GNOME exposes the layout through Mutter's D-Bus API. KDE exposes the same
+geometry through ``kscreen-doctor``; without that fallback a KDE session
+silently reports a single 1920x1080 monitor and gaze coordinates land on the
+wrong screen.
+"""
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import subprocess
 
@@ -86,8 +94,44 @@ def parse_mutter_display_state(gvariant_text: str) -> DisplayLayout:
     )
 
 
+def parse_kscreen_layout(text: str) -> DisplayLayout:
+    """Parse the JSON printed by ``kscreen-doctor -j`` on Plasma."""
+    data = json.loads(text)
+    monitors: list[MonitorInfo] = []
+    for output in data.get("outputs", []):
+        if not output.get("enabled"):
+            continue
+        pos = output.get("pos") or {}
+        size = output.get("size") or {}
+        scale = float(output.get("scale") or 1.0)
+        physical_w = int(size.get("width") or 0)
+        physical_h = int(size.get("height") or 0)
+        if physical_w <= 0 or physical_h <= 0:
+            continue
+        monitors.append(
+            MonitorInfo(
+                connector=str(output.get("name") or "DEFAULT"),
+                x=int(pos.get("x") or 0),
+                y=int(pos.get("y") or 0),
+                width=int(round(physical_w / scale)),
+                height=int(round(physical_h / scale)),
+                physical_width=physical_w,
+                physical_height=physical_h,
+                scale=scale,
+                is_primary=int(output.get("priority") or 1) == 1,
+            )
+        )
+    if not monitors:
+        raise ValueError("kscreen-doctor reported no enabled outputs")
+    return DisplayLayout(
+        monitors=tuple(monitors),
+        total_width=max(mon.x + mon.width for mon in monitors),
+        total_height=max(mon.y + mon.height for mon in monitors),
+    )
+
+
 def get_display_layout() -> DisplayLayout:
-    """Query active GNOME Mutter logical monitor layout, with safe fallback."""
+    """Query the active logical monitor layout, with a safe single-screen fallback."""
     try:
         res = subprocess.run(
             [
@@ -106,6 +150,24 @@ def get_display_layout() -> DisplayLayout:
             timeout=2.0,
             check=True,
         )
-        return parse_mutter_display_state(res.stdout)
-    except (OSError, subprocess.SubprocessError):
+        layout = parse_mutter_display_state(res.stdout)
+        if layout.monitors and layout.monitors[0].connector != "DEFAULT":
+            return layout
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    try:
+        # kscreen-doctor is itself a Qt app; a host that forced a platform for
+        # its own window (the overlay's xcb child, headless tests) must not make
+        # the helper report an empty screen list.
+        env = {key: value for key, value in os.environ.items() if key != "QT_QPA_PLATFORM"}
+        res = subprocess.run(
+            ["kscreen-doctor", "-j"],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+            check=True,
+            env=env,
+        )
+        return parse_kscreen_layout(res.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError):
         return parse_mutter_display_state("")

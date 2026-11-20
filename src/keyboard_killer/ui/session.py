@@ -80,6 +80,7 @@ class DaemonController:
         self.extra_args = list(extra_args or ["run"])
         self.python = python or sys.executable
         self._proc: subprocess.Popen[bytes] | None = None
+        self._log: object | None = None
         self._status = SessionStatus()
 
     @property
@@ -87,7 +88,11 @@ class DaemonController:
         if self._proc is not None and self._proc.poll() is not None:
             code = self._proc.returncode
             self._proc = None
-            self._status = SessionStatus(SessionState.ERROR, f"Daemon exited with code {code}.")
+            self._close_log()
+            self._status = SessionStatus(
+                SessionState.ERROR,
+                f"Daemon exited with code {code}. See {self.paths.logs_dir / 'daemon.log'}.",
+            )
         return self._status
 
     def start(self) -> SessionStatus:
@@ -100,12 +105,20 @@ class DaemonController:
         if self._proc is not None and self._proc.poll() is None:
             self._status = SessionStatus(SessionState.LISTENING, "Already running.")
             return self._status
+        self.paths.ensure_directories()
+        log_path = self.paths.logs_dir / "daemon.log"
         try:
+            log = log_path.open("ab")
+            self._log = log
             self._proc = subprocess.Popen(
                 [self.python, "-m", "keyboard_killer.main", *self.extra_args],
                 cwd=str(Path(__file__).resolve().parents[3]),
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
             )
         except OSError as exc:
+            self._close_log()
             self._status = SessionStatus(SessionState.ERROR, f"Could not start: {exc}")
             return self._status
         self._status = SessionStatus(SessionState.LISTENING, "Listening.")
@@ -119,8 +132,17 @@ class DaemonController:
             except subprocess.TimeoutExpired:
                 self._proc.kill()
         self._proc = None
+        self._close_log()
         self._status = SessionStatus(SessionState.PAUSED, "Paused (daemon stopped).")
         return self._status
+
+    def _close_log(self) -> None:
+        if self._log is not None:
+            try:
+                self._log.close()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            self._log = None
 
     def quit(self) -> None:
         self.pause()

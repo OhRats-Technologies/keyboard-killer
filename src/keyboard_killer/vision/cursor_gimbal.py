@@ -318,6 +318,9 @@ def run_vision_loop(
     on_controller_ready: Callable[[GazeGimbalController], None] | None = None,
 ) -> None:
     """Run the 30Hz dual-camera vision + 60Hz cursor/IPC loop until interrupted."""
+    config.camera_mode, config.cam1_by_id, config.cam2_by_id = resolve_camera_config(
+        config.camera_mode, config.cam1_by_id, config.cam2_by_id
+    )
     if model.cam1_by_id != config.cam1_by_id or model.cam2_by_id != config.cam2_by_id:
         raise ValueError(
             "Calibration camera IDs do not match active config! "
@@ -359,9 +362,6 @@ def run_vision_loop(
     tick_period = 1.0 / 60.0
     start_t = time.monotonic()
 
-    config.camera_mode, config.cam1_by_id, config.cam2_by_id = resolve_camera_config(
-        config.camera_mode, config.cam1_by_id, config.cam2_by_id
-    )
     try:
         with StereoCapture(
             cam1_by_id=config.cam1_by_id,

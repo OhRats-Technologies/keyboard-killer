@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import numpy as np
 
-from keyboard_killer.config import DisplayLayout, MonitorInfo, parse_mutter_display_state
+from keyboard_killer.config import (
+    DisplayLayout,
+    MonitorInfo,
+    parse_kscreen_layout,
+    parse_mutter_display_state,
+)
 from keyboard_killer.input.pointer import DryRunPointerBackend
 from keyboard_killer.ipc.state import (
     FLAG_BLINKING,
@@ -52,6 +57,38 @@ def test_parse_mutter_fractional_scale() -> None:
     layout = parse_mutter_display_state(sample)
     assert layout.total_width == 2048
     assert layout.total_height == 1152
+
+
+def test_parse_kscreen_layout_dual_monitor() -> None:
+    sample = """{
+        "outputs": [
+            {"name": "DP-2", "enabled": true, "priority": 1, "scale": 1,
+             "pos": {"x": 0, "y": 0}, "size": {"width": 1920, "height": 1080}},
+            {"name": "HDMI-A-1", "enabled": true, "priority": 2, "scale": 1,
+             "pos": {"x": 1920, "y": 0}, "size": {"width": 1920, "height": 1080}},
+            {"name": "DP-3", "enabled": false, "priority": 3, "scale": 1,
+             "pos": {"x": 0, "y": 0}, "size": {"width": 2560, "height": 1440}}
+        ],
+        "screen": {"currentSize": {"width": 3840, "height": 1080}}
+    }"""
+    layout = parse_kscreen_layout(sample)
+    assert layout.total_width == 3840
+    assert layout.total_height == 1080
+    assert layout.primary.connector == "DP-2"
+    assert [mon.connector for mon in layout.monitors] == ["DP-2", "HDMI-A-1"]
+
+
+def test_parse_kscreen_layout_scaled_output() -> None:
+    sample = """{
+        "outputs": [
+            {"name": "DP-1", "enabled": true, "priority": 1, "scale": 2,
+             "pos": {"x": 0, "y": 0}, "size": {"width": 3840, "height": 2160}}
+        ]
+    }"""
+    layout = parse_kscreen_layout(sample)
+    assert layout.primary.width == 1920
+    assert layout.primary.height == 1080
+    assert layout.primary.physical_width == 3840
 
 
 def test_shared_gaze_seqlock_ipc(tmp_path) -> None:
