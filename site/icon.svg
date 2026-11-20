@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Keyboard-Killer">
+  <defs>
+    <linearGradient id="kkBg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#242220"/>
+      <stop offset="100%" stop-color="#171614"/>
+    </linearGradient>
+    <clipPath id="kkClip"><rect width="512" height="512" rx="96"/></clipPath>
+  </defs>
+  <g clip-path="url(#kkClip)">
+    <rect width="512" height="512" fill="url(#kkBg)"/>
+    <rect x="4" y="4" width="504" height="504" rx="92" fill="none" stroke="#624A3A" stroke-opacity="0.45" stroke-width="6"/>
+    <!-- Optical stereo-gaze precision reticle -->
+    <circle cx="256" cy="256" r="148" fill="none" stroke="#624A3A" stroke-width="6" stroke-dasharray="14 12"/>
+    <circle cx="256" cy="256" r="102" fill="none" stroke="#F4F3DF" stroke-width="10"/>
+    <!-- Crosshair ticks -->
+    <line x1="256" y1="74" x2="256" y2="132" stroke="#F4F3DF" stroke-width="10" stroke-linecap="round"/>
+    <line x1="256" y1="380" x2="256" y2="438" stroke="#F4F3DF" stroke-width="10" stroke-linecap="round"/>
+    <line x1="74" y1="256" x2="132" y2="256" stroke="#F4F3DF" stroke-width="10" stroke-linecap="round"/>
+    <line x1="380" y1="256" x2="438" y2="256" stroke="#F4F3DF" stroke-width="10" stroke-linecap="round"/>
+    <!-- Acoustic voice-pulse center lock -->
+    <circle cx="256" cy="256" r="36" fill="#E27A3B"/>
+    <circle cx="256" cy="256" r="14" fill="#F4F3DF"/>
+  </g>
+</svg>

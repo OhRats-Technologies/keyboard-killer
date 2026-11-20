@@ -1,4 +1,8 @@
-# Keyboard-Killer
+<p align="center">
+  <a href="https://keyboard-killer.ohrats.party">
+    <img src="assets/header.svg" alt="Keyboard-Killer" width="100%" />
+  </a>
+</p>
 
 Dual-camera stereo gaze, acoustic pop-click, and low-latency voice control for the Linux desktop, with an optional bring-your-own AI provider. Camera, speech, and history stay on the machine.
 
