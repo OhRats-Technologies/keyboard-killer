@@ -438,4 +438,7 @@ def run_ui(
         window.tray = tray
     window.overlay = create_overlay(tray=tray.icon, env=None)
     window.show()
+    # First launch is a guided story, not a cold dashboard.
+    if not window.flow.is_complete:
+        window.open_onboarding()
     return app.exec()
