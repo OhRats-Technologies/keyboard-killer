@@ -9,10 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
-import mediapipe as mp
 import numpy as np
-from mediapipe.tasks import python as mp_python
-from mediapipe.tasks.python import vision as mp_vision
 
 from keyboard_killer.config import DEFAULT_LANDMARKER_MODEL_PATH, FACE_LANDMARKER_URL
 
@@ -184,6 +181,9 @@ class FaceFeatureExtractor:
         model_path: Path = DEFAULT_LANDMARKER_MODEL_PATH,
         use_gpu: bool = True,
     ) -> None:
+        from mediapipe.tasks import python as mp_python
+        from mediapipe.tasks.python import vision as mp_vision
+
         resolved = ensure_landmarker_model(model_path)
         self.delegate_name = "CPU"
         if use_gpu and hasattr(mp_python.BaseOptions, "Delegate"):
@@ -223,6 +223,8 @@ class FaceFeatureExtractor:
 
     def process(self, bgr_frame: np.ndarray, timestamp_ns: int) -> CameraObservation | None:
         """Run FaceLandmarker on a BGR frame and return high-SNR extracted features or None."""
+        import mediapipe as mp
+
         ts_ms = int(timestamp_ns // 1_000_000)
         if ts_ms <= self._last_ts_ms:
             ts_ms = self._last_ts_ms + 1

@@ -6,9 +6,9 @@ import logging
 import threading
 from collections import deque
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
-import sounddevice as sd
 
 from keyboard_killer.audio.pop_detector import PopEvalResult, PopTriggerStateMachine
 
@@ -44,9 +44,11 @@ class UnifiedAudioService:
         self._pre_roll: deque[np.ndarray] = deque(maxlen=pre_roll_chunks)
         self._ptt_chunks: list[np.ndarray] = []
         self._unmute_timer: threading.Timer | None = None
-        self._stream: sd.InputStream | None = None
+        self._stream: Any = None
 
     def start(self) -> None:
+        import sounddevice as sd
+
         self._stream = sd.InputStream(
             samplerate=self.sample_rate,
             channels=1,
@@ -96,7 +98,7 @@ class UnifiedAudioService:
         indata: np.ndarray,
         frames: int,
         _time_info: object,
-        status: sd.CallbackFlags,
+        status: Any,
     ) -> None:
         if status:
             logger.debug("Audio callback status: %s", status)

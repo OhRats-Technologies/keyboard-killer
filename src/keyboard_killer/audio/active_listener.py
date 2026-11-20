@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-import sounddevice as sd
 
 from keyboard_killer.voice.stt.base import SttEngine
 from keyboard_killer.voice.stt.whisper import WhisperSTTEngine
@@ -293,11 +292,13 @@ class ActiveVoiceListener:
         self._audio_q: queue.Queue[tuple[float, np.ndarray]] = queue.Queue(maxsize=256)
         self.events: queue.Queue[VoiceEvent] = queue.Queue()
         self._stop_event = threading.Event()
-        self._stream: sd.InputStream | None = None
+        self._stream: Any = None
         self._worker_thread: threading.Thread | None = None
 
     def start(self) -> None:
         self._stop_event.clear()
+        import sounddevice as sd
+
         self._stream = sd.InputStream(
             samplerate=SAMPLE_RATE,
             blocksize=BLOCK_SIZE,
@@ -332,7 +333,7 @@ class ActiveVoiceListener:
         indata: np.ndarray,
         _frames: int,
         _time_info: object,
-        _status: sd.CallbackFlags,
+        _status: Any,
     ) -> None:
         try:
             self._audio_q.put_nowait((time.monotonic(), indata[:, 0].copy()))
