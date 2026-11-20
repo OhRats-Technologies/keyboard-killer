@@ -49,16 +49,17 @@ def test_bundled_fonts_exist() -> None:
 
 def test_landing_page_links_stable_assets() -> None:
     html = (SITE / "index.html").read_text()
-    assert "ohrats.abf84a1e6ae1.css" in html
+    assert "https://assets.ohrats.party/v1/ohrats.css" in html
+    assert "https://assets.ohrats.party/v1/landing.css" in html
     assert 'class="site-nav"' in html
-    assert "assets.ohrats.party/assets/logo" in html
+    assert "assets.ohrats.party/v1/logo.svg" in html
     assert "install.sh" in html
     assert 'href="/docs.html"' in html
     assert "github.com/OhRats-Technologies/keyboard-killer/releases/latest/download" in html
     assert "keyboard-killer_amd64.deb" in html
     docs = (SITE / "docs.html").read_text()
     assert "One or two stable V4L2 cameras" in docs
-    assert "capability stubs" in docs
+    assert "not implemented yet" in docs
     assert "keyboard-killer-x86_64.AppImage" in html
     assert "macOS is not available yet" in html
     assert "Windows is not available yet" in html
