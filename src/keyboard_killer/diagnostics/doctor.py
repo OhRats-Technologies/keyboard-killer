@@ -21,7 +21,7 @@ from keyboard_killer.models.providers.roles import resolve_gaze_vlm_role, resolv
 from keyboard_killer.models.providers.secrets import keyring_available
 from keyboard_killer.platform.base import PermissionState
 from keyboard_killer.platform.capabilities import CapabilityReport, detect_capabilities
-from keyboard_killer.platform.linux.cameras import list_cameras
+from keyboard_killer.platform.linux.cameras import list_cameras, resolve_camera_config
 from keyboard_killer.platform.linux.display import get_display_layout
 from keyboard_killer.voice.stt.factory import stt_report
 
@@ -105,15 +105,24 @@ def _camera_section(
         } for camera in lister()]
     except Exception as exc:
         return {"discovered": [], "configured": {}, "error": str(exc)}
+    mode, resolved1, resolved2 = resolve_camera_config(
+        config.camera_mode, config.cam1_by_id, config.cam2_by_id
+    )
     configured = {}
-    for slot, path in (("cam1", config.cam1_by_id), ("cam2", config.cam2_by_id)):
+    for slot, path in (("cam1", resolved1), ("cam2", resolved2)):
         configured[slot] = {
             "path": path,
-            "exists": Path(path).exists(),
-            "readable": Path(path).exists() and os.access(path, os.R_OK),
+            "exists": bool(path) and Path(path).exists(),
+            "readable": bool(path) and Path(path).exists() and os.access(path, os.R_OK),
             "matches_discovered": any(item["path"] == path for item in discovered),
         }
-    return {"discovered": discovered, "configured": configured, "error": ""}
+    return {
+        "discovered": discovered,
+        "requested_mode": config.camera_mode,
+        "mode": mode,
+        "configured": configured,
+        "error": "",
+    }
 
 
 def _audio_section(sounddevice_module: object | None = None) -> dict[str, Any]:

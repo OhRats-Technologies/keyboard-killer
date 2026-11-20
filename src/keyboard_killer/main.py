@@ -20,6 +20,7 @@ from keyboard_killer.config import (
     get_display_layout,
 )
 from keyboard_killer.daemon import run_combined_daemon
+from keyboard_killer.platform.linux.cameras import resolve_camera_config
 from keyboard_killer.vision.calibrator import run_calibration_ui
 from keyboard_killer.vision.landmarks import CameraObservation
 from keyboard_killer.vision.stereo_capture import StereoCapture
@@ -154,10 +155,14 @@ def test_cams(
     if gain2 is not None:
         cfg.cam2_gain = gain2
 
+    cfg.camera_mode, cfg.cam1_by_id, cfg.cam2_by_id = resolve_camera_config(
+        cfg.camera_mode, cfg.cam1_by_id, cfg.cam2_by_id
+    )
     try:
         with StereoCapture(
             cam1_by_id=cfg.cam1_by_id,
-            cam2_by_id=cfg.cam2_by_id,
+            cam2_by_id=cfg.cam2_by_id or None,
+            mono=cfg.camera_mode == "mono",
             width=cfg.frame_width,
             height=cfg.frame_height,
             fps=cfg.fps,
@@ -172,10 +177,13 @@ def test_cams(
             # Wait briefly for initial frames so delegates initialize before printing
             stereo.read_pair(timeout_s=2.0)
             for idx, (rep, delg) in enumerate(zip(stereo.reports, stereo.delegates), start=1):
+                if stereo.mono and idx == 2:
+                    continue
                 console.print(
                     f"[cyan]Cam{idx}[/cyan] [{delg}] {rep.resolved_dev} ({rep.fourcc} {rep.width}x{rep.height} "
                     f"@ {rep.fps:.1f}fps) | locked={rep.applied} | unsupported={rep.unsupported}"
                 )
+            console.print(f"[cyan]Camera mode:[/cyan] {cfg.camera_mode}")
 
             start_t = time.monotonic()
             last_seq1 = -1
@@ -266,6 +274,7 @@ def calibrate(
         samples_per_point=samples,
         connector=connector,
     )
+    cfg.save(DEFAULT_CONFIG_PATH)
     console.print(
         f"[green]Calibration saved to {output}[/green] | "
         f"Train RMSE: X={model.rmse_x:.1f}px, Y={model.rmse_y:.1f}px | "

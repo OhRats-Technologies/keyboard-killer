@@ -21,6 +21,7 @@ from keyboard_killer.config import (
     MonitorInfo,
     get_display_layout,
 )
+from keyboard_killer.platform.linux.cameras import resolve_camera_config
 from keyboard_killer.vision.landmarks import (
     STEREO_FEATURE_DIM,
     build_stereo_feature_vector,
@@ -310,6 +311,7 @@ class StereoGazeModel:
         cv_rmse_x: float = 0.0,
         cv_rmse_y: float = 0.0,
         n_train_samples: int = 0,
+        camera_mode: str = "stereo",
     ) -> None:
         self.cam1_by_id = cam1_by_id
         self.cam2_by_id = cam2_by_id
@@ -334,6 +336,7 @@ class StereoGazeModel:
         self.bounds_min_y = float(bounds_min_y)
         self.bounds_max_x = float(bounds_max_x)
         self.bounds_max_y = float(bounds_max_y)
+        self.camera_mode = camera_mode
         self.session_offset_x = 0.0
         self.session_offset_y = 0.0
 
@@ -348,6 +351,7 @@ class StereoGazeModel:
         layout: DisplayLayout,
         groups: np.ndarray | None = None,
         sample_weights: np.ndarray | None = None,
+        camera_mode: str = "stereo",
     ) -> StereoGazeModel:
         """Fit Stage-1 IRLS Huber Global Polynomial + Stage-2 Multi-Scale RBF Residual Field."""
         if X.ndim != 2 or X.shape[0] < 30:
@@ -463,6 +467,7 @@ class StereoGazeModel:
             cv_rmse_x=cv_rmse_x,
             cv_rmse_y=cv_rmse_y,
             n_train_samples=n_samples,
+            camera_mode=camera_mode,
             monitor_connector=monitor.connector,
             bounds_min_x=0.0,
             bounds_min_y=0.0,
@@ -518,6 +523,7 @@ class StereoGazeModel:
         payload = {
             "version": 5,
             "feature_dim": int(len(self.scaler_mean)),
+            "camera_mode": self.camera_mode,
             "expanded_dim": int(len(self.coef_x)),
             "cam1_by_id": self.cam1_by_id,
             "cam2_by_id": self.cam2_by_id,
@@ -588,6 +594,7 @@ class StereoGazeModel:
             cv_rmse_x=float(data.get("cv_rmse_x", 0.0)),
             cv_rmse_y=float(data.get("cv_rmse_y", 0.0)),
             n_train_samples=int(data.get("n_train_samples", 0)),
+            camera_mode=str(data.get("camera_mode", "stereo")),
             monitor_connector=data["monitor_connector"],
             bounds_min_x=float(bounds["min_x"]),
             bounds_min_y=float(bounds["min_y"]),
@@ -1021,6 +1028,7 @@ def _preview_and_refine_calibration(
             layout=layout,
             groups=np.asarray(grps, dtype=np.intp),
             sample_weights=np.asarray(wgts, dtype=np.float64),
+            camera_mode=config.camera_mode,
         )
 
     def _schedule_refit(done_message: str) -> None:
@@ -1261,6 +1269,9 @@ def run_calibration_ui(
     connector: str | None = None,
 ) -> StereoGazeModel:
     """Launch High-Density Stereo Calibration (Anchors + Continuous Gliding Sweeps + Left-Click Pursuit)."""
+    config.camera_mode, config.cam1_by_id, config.cam2_by_id = resolve_camera_config(
+        config.camera_mode, config.cam1_by_id, config.cam2_by_id
+    )
     layout = get_display_layout()
     target_mon = layout.primary
     if connector is not None:
@@ -1277,7 +1288,7 @@ def run_calibration_ui(
     canvas = np.zeros((ui_h, ui_w, 3), dtype=np.uint8)
     thick = 1 if ui_scale < 1.0 else 2
 
-    win_name = "Keyboard-Killer Stereo Calibration"
+    win_name = "Keyboard-Killer Calibration"
     cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
     cv2.moveWindow(win_name, target_mon.x, target_mon.y)
     cv2.resizeWindow(win_name, target_mon.width, target_mon.height)
@@ -1286,7 +1297,8 @@ def run_calibration_ui(
     try:
         with StereoCapture(
             cam1_by_id=config.cam1_by_id,
-            cam2_by_id=config.cam2_by_id,
+            cam2_by_id=config.cam2_by_id or None,
+            mono=config.camera_mode == "mono",
             width=config.frame_width,
             height=config.frame_height,
             fps=config.fps,
@@ -1298,6 +1310,7 @@ def run_calibration_ui(
             use_gpu=config.use_gpu,
             keep_images=False,
         ) as stereo:
+            cam2_label = "Mono camera" if stereo.mono else "Cam2 (CAM 313)"
             while True:
                 neutral_yaw = 0.0
                 neutral_pitch = 0.0
@@ -1321,7 +1334,7 @@ def run_calibration_ui(
                     lines = [
                         f"Hybrid Huber + Multi-Scale RBF Calibration on {target_mon.connector} ({target_mon.width}x{target_mon.height}) [{d1}/{d2}]",
                         f"Cam1 (C270): {'FACE OK' if cam1_ok else 'NO FACE'}   |   "
-                        f"Cam2 (CAM 313): {'FACE OK' if cam2_ok else 'NO FACE'}   |   "
+                        f"{cam2_label}: {'FACE OK' if cam2_ok else 'NO FACE'}   |   "
                         f"Saved Replay Dataset: {replay_count} samples",
                         "Stage 1 (13 Quick Anchors): Fixate on the center pinhole of each dot.",
                         f"Stage 2 ({int(round(sweep1_duration_sec))}s Gliding Sweep): Follow the smoothly moving green dot across the screen.",
@@ -1558,6 +1571,7 @@ def run_calibration_ui(
                     layout=layout,
                     groups=groups,
                     sample_weights=weights,
+                    camera_mode=config.camera_mode,
                 )
                 accepted, refined_model, final_f, final_t, final_g, final_w = (
                     _preview_and_refine_calibration(

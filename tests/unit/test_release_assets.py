@@ -57,8 +57,8 @@ def test_landing_page_links_stable_assets() -> None:
     assert "github.com/OhRats-Technologies/keyboard-killer/releases/latest/download" in html
     assert "keyboard-killer_amd64.deb" in html
     docs = (SITE / "docs.html").read_text()
-    assert "Two stable V4L2 cameras" in docs
-    assert "not implemented" in docs
+    assert "One or two stable V4L2 cameras" in docs
+    assert "capability stubs" in docs
     assert "keyboard-killer-x86_64.AppImage" in html
     assert "macOS is not available yet" in html
     assert "Windows is not available yet" in html

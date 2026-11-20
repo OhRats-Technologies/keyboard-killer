@@ -246,19 +246,29 @@ class CamerasPage(StepPage):
         self.enable_previews = enable_previews
         self.title.setText("Cameras")
         self.subtitle.setText(
-            "Stereo gaze uses two cameras. Pick a stable device for each slot; previews show which is which."
+            "Use one camera for a simpler mono setup, or two for the best stereo accuracy. "
+            "Pick stable devices; previews show which is which."
         )
         grid = QGridLayout()
+        self.mode = QComboBox()
+        self.mode.addItem("Automatic (use available cameras)", "auto")
+        self.mode.addItem("One camera (mono)", "mono")
+        self.mode.addItem("Two cameras (stereo, recommended)", "stereo")
+        index = self.mode.findData(self.config.camera_mode)
+        self.mode.setCurrentIndex(index if index >= 0 else 0)
+        self.mode.currentIndexChanged.connect(self.refresh_devices)
+        grid.addWidget(QLabel("Mode"), 0, 0)
+        grid.addWidget(self.mode, 0, 1)
         self.cam1 = QComboBox()
         self.cam2 = QComboBox()
         self.preview1 = CameraPreview("cam1")
         self.preview2 = CameraPreview("cam2")
-        grid.addWidget(QLabel("Camera 1"), 0, 0)
-        grid.addWidget(self.cam1, 0, 1)
-        grid.addWidget(QLabel("Camera 2"), 1, 0)
-        grid.addWidget(self.cam2, 1, 1)
-        grid.addWidget(self.preview1, 2, 0)
-        grid.addWidget(self.preview2, 2, 1)
+        grid.addWidget(QLabel("Camera 1"), 1, 0)
+        grid.addWidget(self.cam1, 1, 1)
+        grid.addWidget(QLabel("Camera 2"), 2, 0)
+        grid.addWidget(self.cam2, 2, 1)
+        grid.addWidget(self.preview1, 3, 0)
+        grid.addWidget(self.preview2, 3, 1)
         self.body.addLayout(grid)
         buttons = QHBoxLayout()
         swap = QPushButton("Swap cameras")
@@ -271,18 +281,27 @@ class CamerasPage(StepPage):
 
     def refresh_devices(self) -> None:
         devices = discover_v4l_by_id()
+        self.config.camera_mode = str(self.mode.currentData() or "auto")
+        mono = self.config.camera_mode == "mono"
         for combo, current in ((self.cam1, self.config.cam1_by_id), (self.cam2, self.config.cam2_by_id)):
             combo.clear()
             combo.addItem("Choose a camera", "")
             for device in devices:
                 combo.addItem(Path(device).name, device)
             index = combo.findData(current)
+            if index < 0 and current:
+                combo.addItem(Path(current).name, current)
+                index = combo.count() - 1
             combo.setCurrentIndex(index if index >= 0 else 0)
+            combo.setEnabled(not mono or combo is self.cam1)
             combo.currentIndexChanged.connect(self._start_previews)
+        self.preview2.setVisible(not mono)
         self._start_previews()
-        if len(devices) < 2:
+        if mono:
+            self.problem.setText("Mono mode uses one camera. Stereo gives better depth and head-pose tolerance.")
+        elif len(devices) < 2:
             self.problem.setText(
-                "Fewer than two stable cameras found. Stereo gaze needs two; you can continue and finish hardware setup later."
+                "Stereo mode needs two stable cameras. Choose mono, or connect a second camera and refresh."
             )
         else:
             self.problem.setText("")
@@ -295,7 +314,12 @@ class CamerasPage(StepPage):
             self.preview2.setText("Preview disabled in tests")
             return
         self.preview1.start(self.config.cam1_by_id)
-        self.preview2.start(self.config.cam2_by_id)
+        if self.config.camera_mode == "mono":
+            self.preview2.stop()
+            self.preview2.setText("Not used in mono mode")
+        else:
+            self.preview2.setText("")
+            self.preview2.start(self.config.cam2_by_id)
 
     def swap(self) -> None:
         first = self.cam1.currentIndex()
@@ -307,17 +331,19 @@ class CamerasPage(StepPage):
         self.refresh_devices()
 
     def validate(self) -> tuple[bool, str]:
-        if (
-            self.config.cam1_by_id
-            and self.config.cam2_by_id
-            and self.config.cam1_by_id == self.config.cam2_by_id
-        ):
-            return False, "Camera 1 and camera 2 must be different devices."
+        self.config.camera_mode = str(self.mode.currentData() or "auto")
+        if not self.config.cam1_by_id:
+            return False, "Choose one camera to continue."
+        if self.config.camera_mode == "stereo":
+            if not self.config.cam2_by_id:
+                return False, "Choose a second camera, or switch to one camera."
+            if self.config.cam1_by_id == self.config.cam2_by_id:
+                return False, "Camera 1 and camera 2 must be different devices."
         return True, ""
 
     @property
     def unresolved(self) -> bool:
-        return not (self.config.cam1_by_id and self.config.cam2_by_id)
+        return self.config.camera_mode == "stereo" and not self.config.cam2_by_id
 
     def close_previews(self) -> None:
         self.preview1.stop()

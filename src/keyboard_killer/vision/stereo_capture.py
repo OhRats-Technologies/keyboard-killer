@@ -130,7 +130,8 @@ class StereoCapture:
     def __init__(
         self,
         cam1_by_id: str,
-        cam2_by_id: str,
+        cam2_by_id: str | None = None,
+        mono: bool = False,
         width: int = 1280,
         height: int = 720,
         fps: int = 30,
@@ -142,6 +143,7 @@ class StereoCapture:
         use_gpu: bool = True,
         keep_images: bool = True,
     ) -> None:
+        self.mono = bool(mono or not cam2_by_id)
         self._r1 = _CameraReaderThread(
             cam1_by_id,
             width,
@@ -153,40 +155,46 @@ class StereoCapture:
             use_gpu=use_gpu,
             keep_images=keep_images,
         )
-        try:
-            self._r2 = _CameraReaderThread(
-                cam2_by_id,
-                width,
-                height,
-                fps,
-                cam2_exposure,
-                cam2_gain,
-                extract_landmarks=extract_landmarks,
-                use_gpu=use_gpu,
-                keep_images=keep_images,
-            )
-        except Exception:
-            self._r1.stop()
-            raise
+        self._r2: _CameraReaderThread | None = None
+        if not self.mono:
+            try:
+                assert cam2_by_id is not None
+                self._r2 = _CameraReaderThread(
+                    cam2_by_id,
+                    width,
+                    height,
+                    fps,
+                    cam2_exposure,
+                    cam2_gain,
+                    extract_landmarks=extract_landmarks,
+                    use_gpu=use_gpu,
+                    keep_images=keep_images,
+                )
+            except Exception:
+                self._r1.stop()
+                raise
 
     @property
     def reports(self) -> tuple[CameraLockReport, CameraLockReport]:
-        return self._r1.report, self._r2.report
+        second = self._r2.report if self._r2 is not None else self._r1.report
+        return self._r1.report, second
 
     @property
     def delegates(self) -> tuple[str, str]:
-        return self._r1.delegate_name, self._r2.delegate_name
+        second = self._r2.delegate_name if self._r2 is not None else self._r1.delegate_name
+        return self._r1.delegate_name, second
 
     def start(self) -> None:
         self._r1.start()
-        self._r2.start()
+        if self._r2 is not None:
+            self._r2.start()
 
     def read_pair(self, timeout_s: float = 2.0) -> StereoFrame | None:
-        """Return latest paired frames from both cameras, waiting up to `timeout_s` initially."""
+        """Return latest paired frames, duplicating the mono camera when needed."""
         deadline = time.monotonic() + timeout_s
         while True:
             f1 = self._r1.get_latest()
-            f2 = self._r2.get_latest()
+            f2 = self._r2.get_latest() if self._r2 is not None else f1
             if f1 is not None and f2 is not None:
                 return StereoFrame(cam1=f1, cam2=f2)
             if time.monotonic() >= deadline:
@@ -195,7 +203,8 @@ class StereoCapture:
 
     def close(self) -> None:
         self._r1.stop()
-        self._r2.stop()
+        if self._r2 is not None:
+            self._r2.stop()
 
     def __enter__(self) -> StereoCapture:
         self.start()

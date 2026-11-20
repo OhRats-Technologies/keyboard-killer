@@ -166,8 +166,8 @@ def probe_cameras(root: Path = Path("/dev/v4l/by-id")) -> CapabilityInfo:
     if len(by_id) < 2:
         return CapabilityInfo(
             name=Capability.CAMERAS.value,
-            status=CapabilityStatus.DEGRADED,
-            detail=f"Only one stable camera found ({by_id[0].name}); stereo gaze needs two.",
+            status=CapabilityStatus.AVAILABLE,
+            detail=f"One stable camera found ({by_id[0].name}); mono gaze is available, stereo needs two.",
         )
     return _ok(Capability.CAMERAS.value, f"{len(by_id)} stable cameras found.")
 

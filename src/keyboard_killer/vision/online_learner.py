@@ -314,6 +314,7 @@ class OnlineGazeLearner:
                 layout=self.layout,
                 groups=G_all,
                 sample_weights=W_all,
+                camera_mode=self.model.camera_mode,
             )
 
             with self._lock:

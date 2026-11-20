@@ -52,7 +52,7 @@ def test_doctor_report_serializes_and_matches_ui_fields(tmp_path: Path) -> None:
     cameras = [SimpleNamespace(id="cam-a", name="Cam A", path=str(cam_a), capabilities={})]
     report = collect_doctor(
         paths=paths,
-        config=AppConfig(cam1_by_id=str(cam_a), cam2_by_id=str(tmp_path / "cam-missing")),
+        config=AppConfig(camera_mode="mono", cam1_by_id=str(cam_a), cam2_by_id=str(tmp_path / "cam-missing")),
         capabilities=_report(),
         sounddevice_module=_FakeSoundDevice(),
         camera_lister=lambda: cameras,

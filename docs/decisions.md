@@ -23,7 +23,7 @@
 | D2 | **Done** | App-owned Parakeet/landmarks; no bundled LLM; role-split providers |
 | D3 | **Done for Linux** | X11 click-through pill; Wayland tray/toast fallback with reason; no GNOME Shell extension |
 | D4 | **Done** | `config/paths.py`, `KEYBOARD_KILLER_HOME`, non-destructive migration; models in data, landmarker in cache |
-| D5 | **Partial** | Stable by-id discovery + camera picker; calibration still a single legacy file, not `<pair>-<monitor>.json` |
+| D5 | **Partial** | Stable by-id discovery, camera picker, mono (1 camera) and stereo (2) paths; calibration still a single legacy file, not `<pair>-<monitor>.json` |
 | D6 | **Partial** | Screen capability/permission is reported before clicks; the first capture still triggers the OS prompt |
 | D7 | **Linux done** | `.deb` and AppImage built with udev/desktop/systemd; no signing, no macOS/Windows installers |
 | D8 | **Linux done** | Linux productized; Windows/macOS are tested capability stubs |
@@ -109,7 +109,7 @@ The app never bundles an LLM runtime. App-owned assets use the Hex pattern: pinn
 - macOS: AVFoundation `uniqueID`.
 - Windows: Media Foundation symbolic link/device path.
 
-- Store `calibration/<pair-hash>-<monitor>.json`.
+- Support a mono model from one camera and a stereo model from two; store `calibration/<pair-hash>-<monitor>.json`.
 - Provide "identify camera" (flash/swap) in setup so the user can tell which preview is which.
 - Camera controls (exposure/gain/focus) are capability-gated; unsupported controls are reported, not fatal.
 

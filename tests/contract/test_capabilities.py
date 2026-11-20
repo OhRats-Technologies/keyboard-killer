@@ -56,8 +56,9 @@ def test_camera_probe_degrades_to_one_camera(tmp_path: Path) -> None:
     root = tmp_path / "by-id"
     root.mkdir()
     (root / "usb-cam-a-video-index0").touch()
-    assert probe_cameras(root).detail.endswith("stereo gaze needs two.")
-    assert probe_cameras(root).status is CapabilityStatus.DEGRADED
+    one = probe_cameras(root)
+    assert one.status is CapabilityStatus.AVAILABLE
+    assert "mono gaze is available" in one.detail
 
     (root / "usb-cam-b-video-index0").touch()
     assert probe_cameras(root).status is CapabilityStatus.AVAILABLE

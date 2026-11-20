@@ -36,6 +36,7 @@ FACE_LANDMARKER_URL = (
 class AppConfig:
     """Persistent user configuration for keyboard-killer."""
 
+    camera_mode: str = "auto"
     cam1_by_id: str = DEFAULT_CAM1_ID
     cam2_by_id: str = DEFAULT_CAM2_ID
     frame_width: int = 1280

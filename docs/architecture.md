@@ -95,7 +95,7 @@ Summary:
 |---|---|---|---|---|
 | Pointer/click/type | `/dev/uinput` | CGEvent | `SendInput` | `PointerBackend` |
 | PTT hotkey | evdev | CGEventTap / IOHID | low-level keyboard hook | `HotkeySource` |
-| Cameras | V4L2 / OpenCV | AVFoundation | Media Foundation | `CameraSource` |
+| Cameras | V4L2 / OpenCV (mono or stereo) | AVFoundation | Media Foundation | `CameraSource` |
 | Audio | PipeWire via PortAudio | CoreAudio via PortAudio | WASAPI via PortAudio | `AudioSource` |
 | Screen | GNOME Shell/portal | ScreenCaptureKit | Windows.Graphics.Capture | `ScreenSource` |
 | Accessibility | AT-SPI2 | AXUIElement | UI Automation | `AccessibilityBridge` |

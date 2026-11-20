@@ -12,6 +12,7 @@ import numpy as np
 
 from keyboard_killer.config import AppConfig, get_display_layout
 from keyboard_killer.input.pointer import DryRunPointerBackend, PointerBackend
+from keyboard_killer.platform.linux.cameras import resolve_camera_config
 from keyboard_killer.platform.linux.pointer import UInputManager
 from keyboard_killer.ipc.state import (
     FLAG_BLINKING,
@@ -358,10 +359,14 @@ def run_vision_loop(
     tick_period = 1.0 / 60.0
     start_t = time.monotonic()
 
+    config.camera_mode, config.cam1_by_id, config.cam2_by_id = resolve_camera_config(
+        config.camera_mode, config.cam1_by_id, config.cam2_by_id
+    )
     try:
         with StereoCapture(
             cam1_by_id=config.cam1_by_id,
-            cam2_by_id=config.cam2_by_id,
+            cam2_by_id=config.cam2_by_id or None,
+            mono=config.camera_mode == "mono",
             width=config.frame_width,
             height=config.frame_height,
             fps=config.fps,

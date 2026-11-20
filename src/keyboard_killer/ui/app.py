@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 from keyboard_killer.config.paths import AppPaths, current_paths
 from keyboard_killer.config.schema import AppConfig
 from keyboard_killer.diagnostics.doctor import collect_doctor, format_text
-from keyboard_killer.platform.linux.cameras import list_cameras
+from keyboard_killer.platform.linux.cameras import list_cameras, resolve_camera_config
 from keyboard_killer.ui.history.db import HistoryStore
 from keyboard_killer.ui.history.window import HistoryPanel
 from keyboard_killer.ui.onboarding.flow import OnboardingFlow
@@ -156,8 +156,12 @@ class CamerasPanel(QWidget):
             return
         lines = [f"{camera.name}\n  {camera.path}" for camera in cameras] or ["No stable cameras found."]
         lines.append("")
-        lines.append(f"Camera 1: {self.config.cam1_by_id or 'not set'}")
-        lines.append(f"Camera 2: {self.config.cam2_by_id or 'not set'}")
+        mode, cam1, cam2 = resolve_camera_config(
+            self.config.camera_mode, self.config.cam1_by_id, self.config.cam2_by_id
+        )
+        lines.append(f"Mode: {mode}")
+        lines.append(f"Camera 1: {cam1 or 'not set'}")
+        lines.append(f"Camera 2: {cam2 or 'not used (mono)'}")
         self.body.setText("\n".join(lines))
 
 
