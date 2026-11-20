@@ -48,8 +48,11 @@ def test_appimage_installer_verifies_and_installs(tmp_path: Path) -> None:
     digest = hashlib.sha256(asset.read_bytes()).hexdigest()
     (release / "SHA256SUMS").write_text(f"{digest}  keyboard-killer-x86_64.AppImage\n")
 
+    tmp = tmp_path / "tmp"
+    tmp.mkdir()
     env = {
         **os.environ,
+        "TMPDIR": str(tmp),
         "KEYBOARD_KILLER_RELEASE_BASE": f"file://{release}",
         "KEYBOARD_KILLER_APPIMAGE": "1",
         "KEYBOARD_KILLER_APPIMAGE_DIR": str(tmp_path / "app"),
@@ -77,8 +80,11 @@ def test_installer_rejects_bad_checksum(tmp_path: Path) -> None:
     (release / "SHA256SUMS").write_text(
         "0000000000000000000000000000000000000000000000000000000000000000  keyboard-killer-x86_64.AppImage\n"
     )
+    tmp = tmp_path / "tmp"
+    tmp.mkdir()
     env = {
         **os.environ,
+        "TMPDIR": str(tmp),
         "KEYBOARD_KILLER_RELEASE_BASE": f"file://{release}",
         "KEYBOARD_KILLER_APPIMAGE": "1",
         "KEYBOARD_KILLER_APPIMAGE_DIR": str(tmp_path / "app"),

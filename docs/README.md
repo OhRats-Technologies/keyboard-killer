@@ -28,7 +28,8 @@
 4. [decisions.md](decisions.md) — decisions, defaults, implementation status.
 5. [features/stt.md](features/stt.md) — pinned model, downloader behavior, benchmark method and numbers.
 6. [features/providers.md](features/providers.md) — provider adapters, ACP safety, role/consent rules.
-7. [../CONCERNS.md](../CONCERNS.md) — concerns with resolved/partial/open status.
+7. [RELEASES.md](RELEASES.md) — tag-driven release, public mirror, and install smoke.
+8. [../CONCERNS.md](../CONCERNS.md) — concerns with resolved/partial/open status.
 
 ## Reference material
 
