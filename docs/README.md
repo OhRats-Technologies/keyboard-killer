@@ -1,6 +1,6 @@
 # Keyboard-Killer Docs
 
-**Status:** implementation snapshot, 2026-11-19. Steps 1–5 and 8 of the migration are complete and verified; the Linux UI and packaging (step 6–7) are implemented. Windows and macOS are honest capability stubs. The Linux-first engine still runs as a CLI daemon.
+**Status:** implementation snapshot, 2026-11-20. Steps 1–5 and 8 of the migration are complete and verified; the Linux UI and packaging (step 6–7) are implemented. Windows and macOS are honest capability stubs. The Linux-first engine still runs as a CLI daemon.
 
 **Purpose:** keep product, UI, model, provider, and cross-platform decisions in one place so a new session starts from shipped behavior and known gaps instead of re-deriving them.
 

@@ -32,6 +32,9 @@ def test_version_script_matches_pyproject() -> None:
 
 def test_landing_page_links_stable_assets() -> None:
     html = (SITE / "index.html").read_text()
+    assert "ohrats.abf84a1e6ae1.css" in html
+    assert 'class="site-nav"' in html
+    assert "assets.ohrats.party/assets/logo" in html
     assert "install.sh" in html
     assert "keyboard-killer_amd64.deb" in html
     assert "keyboard-killer-x86_64.AppImage" in html
