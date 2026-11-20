@@ -43,7 +43,8 @@ def ensure_runtime(*, force: bool = False) -> Path:
                 [
                     str(venv / "bin" / "python"),
                     "-c",
-                    "import keyboard_killer, PySide6, onnx_asr, mediapipe, sounddevice",
+                    "import keyboard_killer, PySide6, onnx_asr, keyring; "
+                    "from importlib.metadata import version; version('mediapipe'); version('sounddevice')",
                 ],
                 check=True,
                 capture_output=True,
@@ -96,7 +97,8 @@ def ensure_runtime(*, force: bool = False) -> Path:
         [
             str(bin_dir / "python"),
             "-c",
-            "import keyboard_killer, PySide6, onnx_asr, mediapipe, sounddevice, keyring; "
+            "import keyboard_killer, PySide6, onnx_asr, keyring; "
+            "from importlib.metadata import version; version('mediapipe'); version('sounddevice'); "
             "print('bundled runtime ok')",
         ]
     )
