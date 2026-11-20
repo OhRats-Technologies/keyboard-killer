@@ -3,144 +3,259 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#07080a" />
+  <meta name="theme-color" content="#efede5" />
   <title>Keyboard-Killer — look, speak, it clicks</title>
   <meta name="description" content="Local-first gaze and voice control for the Linux desktop. Look at a target, say what you mean, and Keyboard-Killer does the rest." />
+  <meta property="og:site_name" content="OhRats" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="Keyboard-Killer — look, speak, it clicks" />
   <meta property="og:description" content="Local-first gaze and voice control for Linux. Camera and speech processing stay on your machine." />
   <meta property="og:url" content="https://keyboard-killer.ohrats.party/" />
   <meta property="og:image" content="https://keyboard-killer.ohrats.party/og.png" />
-  <meta name="twitter:image" content="https://keyboard-killer.ohrats.party/og.png" />
   <meta name="twitter:card" content="summary_large_image" />
-  <link rel="icon" href="/keyboard-killer.svg" type="image/svg+xml" />
+  <meta name="twitter:title" content="Keyboard-Killer — look, speak, it clicks" />
+  <meta name="twitter:description" content="Local-first gaze and voice control for Linux." />
+  <meta name="twitter:image" content="https://keyboard-killer.ohrats.party/og.png" />
+  <link rel="canonical" href="https://keyboard-killer.ohrats.party/" />
+  <link rel="icon" type="image/svg+xml" href="https://assets.ohrats.party/assets/logo.092a1cece4d0.svg" />
+  <script src="https://assets.ohrats.party/assets/theme.b6e0fe408633.js"></script>
+  <script src="https://assets.ohrats.party/assets/menu.a8b9a29f9ccc.js" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://assets.ohrats.party/assets/ohrats.abf84a1e6ae1.css" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <header class="masthead">
-    <a class="wordmark" href="/" aria-label="Keyboard-Killer home">
-      <img src="/keyboard-killer.svg" width="34" height="34" alt="" />
-      <span>Keyboard-Killer</span>
-    </a>
-    <nav class="masthead__links" aria-label="Project links">
-      <a href="https://github.com/OhRats-Technologies/keyboard-killer">GitHub</a>
-      <a href="https://github.com/OhRats-Technologies/keyboard-killer/tree/main/docs">Docs</a>
-    </nav>
-  </header>
+  <nav class="site-nav">
+    <div class="nav-container">
+      <div class="nav-left">
+        <a href="https://ohrats.party/" class="logo" aria-label="OhRats home">
+          <img src="https://assets.ohrats.party/assets/logo.092a1cece4d0.svg" alt="OhRats" class="logo-image" />
+          <span class="logo-text">OhRats</span>
+        </a>
+        <div class="desktop-menu">
+          <a href="/" class="menu-item nav-highlight" aria-current="page">
+            <span class="menu-number">01</span>
+            <span class="menu-label">Keyboard-Killer</span>
+          </a>
+          <a href="https://github.com/OhRats-Technologies/keyboard-killer/tree/main/docs" class="menu-item">
+            <span class="menu-number">02</span>
+            <span class="menu-label">Docs</span>
+          </a>
+          <a href="https://github.com/OhRats-Technologies/keyboard-killer" class="menu-item">
+            <span class="menu-number">03</span>
+            <span class="menu-label">GitHub</span>
+          </a>
+        </div>
+      </div>
+
+      <div class="cta-buttons">
+        <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme"></button>
+        <a href="https://github.com/OhRats-Technologies" class="github-link" aria-label="GitHub">
+          <span class="github-icon" aria-hidden="true"></span>
+        </a>
+        <a href="#install" class="or-button">Install</a>
+      </div>
+
+      <button class="mobile-menu-btn" data-menu-toggle aria-controls="mobile-menu" aria-expanded="false" aria-label="Open menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <div class="mobile-menu" id="mobile-menu">
+      <a href="/" class="mobile-menu-link">01 Keyboard-Killer</a>
+      <a href="https://github.com/OhRats-Technologies/keyboard-killer/tree/main/docs" class="mobile-menu-link">02 Docs</a>
+      <a href="https://github.com/OhRats-Technologies/keyboard-killer" class="mobile-menu-link">03 GitHub</a>
+      <div class="mobile-divider"></div>
+      <div class="mobile-theme-row">
+        <span class="mobile-theme-label">Theme</span>
+        <button class="mobile-theme-btn" data-theme-toggle aria-label="Toggle theme"></button>
+      </div>
+      <a href="#install" class="mobile-menu-link">Install</a>
+    </div>
+  </nav>
 
   <main>
-    <section class="hero">
-      <div class="hero__icon" aria-hidden="true">
-        <img src="/keyboard-killer.svg" width="112" height="112" alt="" />
+    <header class="hero-header kk-hero">
+      <div class="ohrats-grid" aria-hidden="true"></div>
+      <div class="hero-content">
+        <div class="kk-app-icon" aria-hidden="true">
+          <svg class="kk-mark" viewBox="0 0 96 96" role="img" aria-label="Keyboard-Killer mark">
+            <rect class="kk-mark__bg" width="96" height="96"></rect>
+            <circle class="kk-mark__ring" cx="48" cy="48" r="32"></circle>
+            <path class="kk-mark__glyph" d="M34 28v40M34 48l21-20M34 48l22 21"></path>
+          </svg>
+        </div>
+        <div class="badge-container kk-badge">
+          <span class="badge-line" aria-hidden="true"></span>
+          <span class="badge-text">Gaze + voice for the Linux desktop</span>
+          <span class="badge-line" aria-hidden="true"></span>
+        </div>
+        <h1>Look. Speak. <span class="hero-muted">It clicks.</span></h1>
+        <p class="kk-lede">
+          Look at a target, say what you mean, and Keyboard-Killer does the rest.
+          Stereo cameras and local speech recognition stay on your machine.
+        </p>
+
+        <div class="kk-install" id="install" aria-label="Install Keyboard-Killer">
+          <div class="kk-platform-tabs" role="tablist" aria-label="Operating system">
+            <button class="os-tab" role="tab" id="tab-linux" aria-controls="panel-linux" aria-selected="true" data-os="linux">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="5" width="15" height="13" rx="1"></rect><path d="M8 9l2.6 2.5L8 14M12.4 14H16"></path></svg>
+              Linux
+            </button>
+            <button class="os-tab" role="tab" id="tab-macos" aria-controls="panel-macos" aria-selected="false" data-os="macos">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 12.9c0 2.3 2 3 2 3s-.3 1.1-1 2.1c-.6.9-1.3 1.8-2.3 1.8-1 0-1.3-.6-2.5-.6s-1.5.6-2.5.6c-1 0-1.7-1-2.4-1.9-1.3-1.9-2.3-5.3-1-7.6.7-1.2 1.9-1.9 3.1-1.9 1 0 1.9.7 2.5.7s1.7-.8 2.9-.7c.5 0 1.9.2 2.8 1.5-.1 0-1.6 1-1.6 2.9ZM14.8 7.3c.5-.6.9-1.5.8-2.4-.8 0-1.7.5-2.2 1.1-.5.6-.9 1.5-.8 2.3.9.1 1.7-.4 2.2-1Z"></path></svg>
+              macOS
+            </button>
+            <button class="os-tab" role="tab" id="tab-windows" aria-controls="panel-windows" aria-selected="false" data-os="windows">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.6 10.5 4.7v6.6H4zM11.4 4.6 20 3.4v7.9h-8.6zM4 12.2h6.5v6.6L4 17.9zM11.4 12.2H20v7.9l-8.6-1.2z"></path></svg>
+              Windows
+            </button>
+          </div>
+
+          <div id="panel-linux" class="install-panel" role="tabpanel" aria-labelledby="tab-linux">
+            <div class="kk-release">
+              <span>Linux</span>
+              <span><span data-release-version>v0.1.0</span> · x86_64 · Debian/Ubuntu or AppImage</span>
+            </div>
+            <div class="kk-row">
+              <span class="kk-row__label">Script</span>
+              <code class="kk-row__value">curl -fsSL https://keyboard-killer.ohrats.party/install.sh | sh</code>
+              <button class="kk-copy" type="button" data-copy="curl -fsSL https://keyboard-killer.ohrats.party/install.sh | sh" aria-label="Copy install script command" title="Copy">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="1"></rect><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"></path></svg>
+              </button>
+            </div>
+            <div class="kk-row">
+              <span class="kk-row__label">Package</span>
+              <code class="kk-row__value">curl -fLo /tmp/keyboard-killer.deb https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download/keyboard-killer_amd64.deb && sudo apt install /tmp/keyboard-killer.deb</code>
+              <button class="kk-copy" type="button" data-copy="curl -fLo /tmp/keyboard-killer.deb https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download/keyboard-killer_amd64.deb && sudo apt install /tmp/keyboard-killer.deb" aria-label="Copy Debian package command" title="Copy">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="1"></rect><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"></path></svg>
+              </button>
+            </div>
+            <div class="kk-row">
+              <span class="kk-row__label">AppImage</span>
+              <code class="kk-row__value">chmod +x Keyboard-Killer-*.AppImage && ./Keyboard-Killer-*.AppImage</code>
+              <a class="or-button kk-download" href="https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download/keyboard-killer-x86_64.AppImage" aria-label="Download AppImage" title="Download AppImage">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5v11M7 11l5 5 5-5M5 19.5h14"></path></svg>
+              </a>
+            </div>
+            <p class="kk-note">
+              The .deb includes the <code>/dev/uinput</code> udev rule, a desktop entry, and an optional
+              systemd user unit. Two cameras are required for stereo gaze; the app reports a single
+              camera as degraded.
+            </p>
+          </div>
+
+          <div id="panel-macos" class="install-panel kk-soon" role="tabpanel" aria-labelledby="tab-macos" hidden>
+            <p class="kk-soon__title">macOS is not available yet.</p>
+            <p>The macOS host is a capability stub in this release: CGEvent, AVFoundation,
+              ScreenCaptureKit, TCC, and notarization are not implemented. No installer is published.</p>
+            <a href="https://github.com/OhRats-Technologies/keyboard-killer/blob/main/docs/platform-matrix.md">Read the platform matrix</a>
+          </div>
+          <div id="panel-windows" class="install-panel kk-soon" role="tabpanel" aria-labelledby="tab-windows" hidden>
+            <p class="kk-soon__title">Windows is not available yet.</p>
+            <p>The Windows host is a capability stub in this release: SendInput, Media Foundation,
+              Windows.Graphics.Capture, UI Automation, and signing are not implemented. No installer is published.</p>
+            <a href="https://github.com/OhRats-Technologies/keyboard-killer/blob/main/docs/platform-matrix.md">Read the platform matrix</a>
+          </div>
+        </div>
       </div>
-      <p class="eyebrow">Gaze + voice for the Linux desktop</p>
-      <h1>Look. Speak.<br /><span>It clicks.</span></h1>
-      <p class="lede">
-        Look at a target, say what you mean, and Keyboard-Killer does the rest.
-        Stereo cameras and local speech recognition stay on your machine.
-      </p>
+    </header>
 
-      <div class="install" aria-label="Install Keyboard-Killer">
-        <div class="os-tabs" role="tablist" aria-label="Operating system">
-          <button class="os-tab" role="tab" id="tab-linux" aria-controls="panel-linux" aria-selected="true" data-os="linux">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="5" width="15" height="13" rx="2"></rect><path d="M8 9l2.6 2.5L8 14M12.4 14H16"></path></svg>
-            Linux
-          </button>
-          <button class="os-tab" role="tab" id="tab-macos" aria-controls="panel-macos" aria-selected="false" data-os="macos">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 12.9c0 2.3 2 3 2 3s-.3 1.1-1 2.1c-.6.9-1.3 1.8-2.3 1.8-1 0-1.3-.6-2.5-.6s-1.5.6-2.5.6c-1 0-1.7-1-2.4-1.9-1.3-1.9-2.3-5.3-1-7.6.7-1.2 1.9-1.9 3.1-1.9 1 0 1.9.7 2.5.7s1.7-.8 2.9-.7c.5 0 1.9.2 2.8 1.5-.1 0-1.6 1-1.6 2.9ZM14.8 7.3c.5-.6.9-1.5.8-2.4-.8 0-1.7.5-2.2 1.1-.5.6-.9 1.5-.8 2.3.9.1 1.7-.4 2.2-1Z"></path></svg>
-            macOS
-          </button>
-          <button class="os-tab" role="tab" id="tab-windows" aria-controls="panel-windows" aria-selected="false" data-os="windows">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.6 10.5 4.7v6.6H4zM11.4 4.6 20 3.4v7.9h-8.6zM4 12.2h6.5v6.6L4 17.9zM11.4 12.2H20v7.9l-8.6-1.2z"></path></svg>
-            Windows
-          </button>
-        </div>
-
-        <div id="panel-linux" class="install-panel" role="tabpanel" aria-labelledby="tab-linux">
-          <div class="release-row">
-            <span class="release-row__label">Linux</span>
-            <span class="release-row__meta"><span data-release-version>v0.1.0</span> · x86_64 · Debian/Ubuntu or AppImage</span>
-          </div>
-          <div class="install-row">
-            <span class="install-row__label">Script</span>
-            <code class="install-row__value">curl -fsSL https://keyboard-killer.ohrats.party/install.sh | sh</code>
-            <button class="copy" type="button" data-copy="curl -fsSL https://keyboard-killer.ohrats.party/install.sh | sh" aria-label="Copy install script command" title="Copy">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2"></rect><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"></path></svg>
-            </button>
-          </div>
-          <div class="install-row">
-            <span class="install-row__label">Package</span>
-            <code class="install-row__value">curl -fLo /tmp/keyboard-killer.deb https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download/keyboard-killer_amd64.deb && sudo apt install /tmp/keyboard-killer.deb</code>
-            <button class="copy" type="button" data-copy="curl -fLo /tmp/keyboard-killer.deb https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download/keyboard-killer_amd64.deb && sudo apt install /tmp/keyboard-killer.deb" aria-label="Copy Debian package command" title="Copy">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2"></rect><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"></path></svg>
-            </button>
-          </div>
-          <div class="install-row">
-            <span class="install-row__label">AppImage</span>
-            <code class="install-row__value">chmod +x Keyboard-Killer-*.AppImage && ./Keyboard-Killer-*.AppImage</code>
-            <a class="download" href="https://github.com/OhRats-Technologies/keyboard-killer/releases/latest/download/keyboard-killer-x86_64.AppImage" aria-label="Download AppImage" title="Download AppImage">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.5v11M7 11l5 5 5-5M5 19.5h14"></path></svg>
-            </a>
-          </div>
-          <p class="install-note">
-            The .deb includes the <code>/dev/uinput</code> udev rule, a desktop entry, and an optional systemd user unit.
-            Two cameras are required for stereo gaze; the app reports a single camera as degraded.
-          </p>
-        </div>
-
-        <div id="panel-macos" class="install-panel" role="tabpanel" aria-labelledby="tab-macos" hidden>
-          <div class="soon">
-            <p class="soon__title">macOS is not available yet.</p>
-            <p>The macOS host is a capability stub in this release: CGEvent, AVFoundation, ScreenCaptureKit, TCC, and notarization are not implemented. No installer is published.</p>
-            <a href="https://github.com/OhRats-Technologies/keyboard-killer/blob/main/docs/platform-matrix.md">Read the platform matrix</a>
+    <section class="kk-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-title-container">
+            <span class="badge-text">01 / What it does</span>
+            <h2>Hands on the desktop, <span class="muted">not on the mouse.</span></h2>
           </div>
         </div>
-        <div id="panel-windows" class="install-panel" role="tabpanel" aria-labelledby="tab-windows" hidden>
-          <div class="soon">
-            <p class="soon__title">Windows is not available yet.</p>
-            <p>The Windows host is a capability stub in this release: SendInput, Media Foundation, Windows.Graphics.Capture, UI Automation, and signing are not implemented. No installer is published.</p>
-            <a href="https://github.com/OhRats-Technologies/keyboard-killer/blob/main/docs/platform-matrix.md">Read the platform matrix</a>
-          </div>
+        <div class="kk-features">
+          <article class="feature-card">
+            <span class="kk-index">01</span>
+            <h3>Look, then speak</h3>
+            <p>Two stable cameras build a stereo gaze estimate. Say “click send” and the click lands where you were looking.</p>
+          </article>
+          <article class="feature-card">
+            <span class="kk-index">02</span>
+            <h3>Local by default</h3>
+            <p>Parakeet speech recognition runs on your CPU. Camera, speech, and history stay on the machine.</p>
+          </article>
+          <article class="feature-card">
+            <span class="kk-index">03</span>
+            <h3>Bring your own AI</h3>
+            <p>Optional OpenAI-compatible, Ollama, or ACP agent providers. Deterministic pointer and voice paths never depend on one.</p>
+          </article>
+          <article class="feature-card">
+            <span class="kk-index">04</span>
+            <h3>Recover in plain language</h3>
+            <p><code>doctor</code> and setup report cameras, audio, permissions, models, and providers with one next action.</p>
+          </article>
         </div>
       </div>
     </section>
 
-    <section class="features" aria-label="Why Keyboard-Killer">
-      <article>
-        <h2>Look, then speak</h2>
-        <p>Two stable cameras build a stereo gaze estimate. Say “click send” and the click lands where you were looking.</p>
-      </article>
-      <article>
-        <h2>Local by default</h2>
-        <p>Parakeet speech recognition runs on your CPU. Camera, speech, and history stay on the machine.</p>
-      </article>
-      <article>
-        <h2>Bring your own AI</h2>
-        <p>Optional OpenAI-compatible, Ollama, or ACP agent providers. The deterministic pointer and voice paths never depend on one.</p>
-      </article>
-      <article>
-        <h2>Recover in plain language</h2>
-        <p><code>doctor</code> and the setup window report cameras, audio, permissions, models, and providers with one next action.</p>
-      </article>
-    </section>
-
-    <section class="privacy" aria-label="Privacy">
-      <div>
-        <p class="eyebrow">Privacy</p>
-        <h2>Your camera and voice stay here.</h2>
-        <p>Screenshots only leave the device if you explicitly enable a remote gaze VLM. API keys live in the OS keychain.</p>
+    <section class="kk-section">
+      <div class="container">
+        <div class="section-grid kk-privacy">
+          <div>
+            <span class="badge-text">02 / Privacy</span>
+            <h2>Your camera and voice stay here.</h2>
+            <p>Screenshots only leave the device if you explicitly enable a remote gaze VLM. API keys live in the OS keychain.</p>
+          </div>
+          <div class="kk-privacy-links">
+            <a class="header-link" href="https://github.com/OhRats-Technologies/keyboard-killer">View the source</a>
+            <a class="header-link" href="https://github.com/OhRats-Technologies/keyboard-killer/blob/main/CONCERNS.md">Known gaps</a>
+          </div>
+        </div>
       </div>
-      <a class="text-link" href="https://github.com/OhRats-Technologies/keyboard-killer">View the source</a>
     </section>
   </main>
 
-  <footer class="footer">
-    <span>© 2026 OhRats Technologies</span>
-    <nav aria-label="Footer">
-      <a href="https://ohrats.party">OhRats</a>
-      <a href="https://github.com/OhRats-Technologies/keyboard-killer">GitHub</a>
-      <a href="https://github.com/OhRats-Technologies/keyboard-killer/blob/main/CONCERNS.md">Known gaps</a>
-    </nav>
+  <footer>
+    <div class="footer-content">
+      <div class="footer-brand">
+        <a href="https://ohrats.party/" aria-label="OhRats Technologies home">
+          <img src="https://assets.ohrats.party/assets/logo.092a1cece4d0.svg" alt="OhRats" class="footer-logo" />
+        </a>
+        <div class="footer-socials">
+          <a href="https://x.com/ohratsparty" class="footer-social-link" aria-label="X (Twitter)">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none"><path d="M28 28L18.6145 14.0124L18.6305 14.0255L27.0929 4H24.265L17.3713 12.16L11.8968 4H4.48021L13.2425 17.0593L13.2414 17.0582L4 28H6.82792L14.4921 18.9215L20.5834 28H28ZM10.7763 6.18182L23.9449 25.8182H21.7039L8.52468 6.18182H10.7763Z" fill="currentColor"></path></svg>
+          </a>
+          <a href="https://github.com/OhRats-Technologies" class="footer-social-link" aria-label="GitHub">
+            <span class="github-icon" aria-hidden="true"></span>
+          </a>
+        </div>
+      </div>
+
+      <nav class="footer-links">
+        <div class="footer-column">
+          <span class="footer-column-label">Tools</span>
+          <a href="https://keyboard-killer.ohrats.party/" class="footer-link">Keyboard-Killer</a>
+          <a href="https://wakebar.ohrats.party/" class="footer-link">WakeBar</a>
+          <a href="https://rc.ohrats.party/" class="footer-link">RC</a>
+        </div>
+        <div class="footer-column">
+          <span class="footer-column-label">Resources</span>
+          <a href="https://github.com/OhRats-Technologies/keyboard-killer/tree/main/docs" class="footer-link">Docs</a>
+          <a href="https://github.com/OhRats-Technologies/keyboard-killer" class="footer-link">GitHub</a>
+        </div>
+        <div class="footer-column">
+          <span class="footer-column-label">Company</span>
+          <a href="https://ohrats.party/#research" class="footer-link">Research</a>
+          <a href="mailto:contact@ohrats.party" class="footer-link">Contact</a>
+        </div>
+      </nav>
+    </div>
+
+    <div class="footer-bottom">
+      <span class="footer-copyright">© 2026 OhRats Technologies. All rights reserved.</span>
+    </div>
   </footer>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
