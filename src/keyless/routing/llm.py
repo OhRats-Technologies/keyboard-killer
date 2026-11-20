@@ -103,6 +103,16 @@ class LLMAgent:
         """Execute a synchronous completion against the configured provider."""
         return self.provider.complete(system_prompt, user_prompt, json=json_mode)
 
+    def answer_question(self, question: str, *, context: str = "") -> str:
+        """Generate a concise spoken-friendly response for Keyless voice assistance."""
+        system = (
+            "You are Keyless, a calm, concise hands-free voice and gaze assistant on Linux. "
+            "Answer in 1 to 3 clear spoken sentences using plain text with no markdown formatting, "
+            "no bullet lists, and no code fences."
+        )
+        user = f"Context:\n{context[:2000]}\n\nQuestion: {question}" if context else question
+        return _strip_code_fences(self.complete(system, user, json_mode=False))
+
     def generate_shell_command(
         self,
         instruction: str,

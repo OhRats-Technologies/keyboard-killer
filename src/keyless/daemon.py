@@ -130,6 +130,7 @@ def run_combined_daemon(
     audio_svc: UnifiedAudioService | None = None
     ptt_mon: EvdevHotkeyMonitor | None = None
     active_listener: ActiveVoiceListener | None = None
+    speaker = None
     stt = None
     event_stop = threading.Event()
     event_thread: threading.Thread | None = None
@@ -268,6 +269,31 @@ def run_combined_daemon(
                 f"STT: {stt.status().name} ({stt.status().device}/{stt.status().compute_type})"
             )
 
+            if config.tts_enabled:
+                try:
+                    from keyless.voice.tts import WoofSpeaker, tts_report
+
+                    if tts_report()["ready"]:
+                        speaker = WoofSpeaker(voice=config.tts_voice, enabled=True)
+                        out.print(
+                            f"[green]TTS ready (Voice by Underdog Woof, voice={config.tts_voice})[/green]"
+                        )
+                    else:
+                        out.print(
+                            "[yellow]TTS enabled but Underdog Woof weights missing "
+                            "(run `keyless models download underdog-woof`).[/yellow]"
+                        )
+                except Exception as exc:
+                    out.print(f"[yellow]TTS unavailable: {exc}[/yellow]")
+
+            def _speak_result(res) -> None:
+                if speaker is None or not config.tts_speak_replies:
+                    return
+                if res.payload.get("spoken") or res.route == "assistant":
+                    speaker.speak(res.detail, interrupt=True)
+                elif res.route == "terminal" and res.payload.get("command"):
+                    speaker.speak("Typed shell command.", interrupt=True)
+
             if config.always_on_voice:
                 transcript_path = current_paths().transcript_path
 
@@ -283,6 +309,8 @@ def run_combined_daemon(
                     stt_engine=stt,
                     on_transcript=_publish_transcript,
                 )
+                if speaker is not None:
+                    speaker._on_speaking_changed = active_listener.set_muted
                 out.print(
                     f"[green]ActiveVoiceListener ready ({active_listener.device}/{active_listener.compute_type}) "
                     f"| LLM={llm.backend} | pop_click={config.enable_pop_click}[/green]"
@@ -305,6 +333,7 @@ def run_combined_daemon(
                             try:
                                 res = router.dispatch(ev.transcript)
                                 out.print(f"  -> [bold]{res.route}[/bold]: {res.detail}")
+                                _speak_result(res)
                             except Exception as exc:
                                 out.print(f"  -> [red]Dispatch error: {exc}[/red]")
 
@@ -340,6 +369,7 @@ def run_combined_daemon(
                     try:
                         res = router.dispatch(transcript)
                         out.print(f"  -> [bold]{res.route}[/bold]: {res.detail}")
+                        _speak_result(res)
                     except Exception as exc:
                         out.print(f"  -> [red]Dispatch error: {exc}[/red]")
 
@@ -410,6 +440,8 @@ def run_combined_daemon(
             event_thread.join(timeout=1.0)
         if active_listener is not None:
             active_listener.stop()
+        if speaker is not None:
+            speaker.close()
         if stt is not None:
             stt.close()
         if ptt_mon is not None:

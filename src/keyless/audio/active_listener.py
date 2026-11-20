@@ -137,6 +137,12 @@ _VALID_COMMAND_PREFIXES = (
     "what is this",
     "summarize this",
     "fill this",
+    "ask",
+    "assistant",
+    "hey assistant",
+    "hey keyless",
+    "answer",
+    "explain",
     "stop listening",
     "go to sleep",
     "wake up",
@@ -271,6 +277,7 @@ class ActiveVoiceListener:
         self.on_transcript = on_transcript
         self.audio_device = audio_device
         self.sleeping = False
+        self._muted = False
         if stt_engine is None:
             raise ValueError("ActiveVoiceListener requires an SttEngine.")
         self.stt_engine = stt_engine
@@ -341,6 +348,10 @@ class ActiveVoiceListener:
         total_band = float(np.sum(spec**2) + 1e-9)
         return (voice_band / total_band) > 0.42
 
+    def set_muted(self, muted: bool) -> None:
+        """Temporarily suppress capture (e.g. while local TTS is speaking)."""
+        self._muted = bool(muted)
+
     def _process_loop(self) -> None:
         # 14 frames = 448ms pre-roll ring buffer so initial consonant is never clipped
         pre_roll: deque[np.ndarray] = deque(maxlen=14)
@@ -359,6 +370,14 @@ class ActiveVoiceListener:
             try:
                 now, frame = self._audio_q.get(timeout=0.05)
             except queue.Empty:
+                continue
+
+            if self._muted:
+                pre_roll.clear()
+                speech_buf.clear()
+                in_speech = False
+                consecutive_speech = 0
+                trailing_silence_frames = 0
                 continue
 
             rms = float(np.sqrt(np.mean(frame * frame) + 1e-12))

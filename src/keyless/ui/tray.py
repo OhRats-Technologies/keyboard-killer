@@ -58,6 +58,8 @@ class Tray:
         self.open_action = QAction("Open Keyless", self.menu)
         self.pause_action = QAction("Pause", self.menu)
         self.calibrate_action = QAction("Calibrate", self.menu)
+        self.update_action = QAction("Update available…", self.menu)
+        self.update_action.setVisible(False)
         self.quit_action = QAction("Quit", self.menu)
         self.open_action.triggered.connect(on_open or (lambda: None))
         self.pause_action.triggered.connect(on_pause or (lambda: None))
@@ -67,6 +69,7 @@ class Tray:
         self.menu.addAction(self.pause_action)
         self.menu.addSeparator()
         self.menu.addAction(self.calibrate_action)
+        self.menu.addAction(self.update_action)
         self.menu.addSeparator()
         self.menu.addAction(self.quit_action)
         self.icon.setContextMenu(self.menu)
@@ -100,6 +103,23 @@ class Tray:
         }
         self.icon.setToolTip(f"Keyless: {labels.get(state, state.value)}")
         self.pause_action.setText("Resume" if state is SessionState.PAUSED else "Pause")
+
+    def set_update_available(
+        self,
+        version: str | None,
+        on_trigger: Callable[[], None] | None = None,
+    ) -> None:
+        if not version:
+            self.update_action.setVisible(False)
+            return
+        self.update_action.setText(f"Update to Keyless {version}…")
+        if on_trigger is not None:
+            try:
+                self.update_action.triggered.disconnect()
+            except Exception:
+                pass
+            self.update_action.triggered.connect(on_trigger)
+        self.update_action.setVisible(True)
 
     def stop(self) -> None:
         self.icon.hide()

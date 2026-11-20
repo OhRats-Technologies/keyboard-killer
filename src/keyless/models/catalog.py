@@ -11,6 +11,7 @@ from dataclasses import dataclass
 HF_BASE = "https://huggingface.co"
 
 PARAKEET_TDT_V2_ID = "parakeet-tdt-0.6b-v2"
+UNDERDOG_WOOF_ID = "underdog-woof"
 
 
 @dataclass(frozen=True)
@@ -84,11 +85,76 @@ PARAKEET_TDT_0_6B_V2 = ModelAsset(
     ),
 )
 
+UNDERDOG_WOOF = ModelAsset(
+    id=UNDERDOG_WOOF_ID,
+    display_name="Underdog Woof TTS (English, int8)",
+    engine="underdog-woof",
+    quantization="int8",
+    revision="be702960539777fc3f698e54335276a8391b00f9",
+    repo="ConwayResearch/Underdog-Woof",
+    license="underdog-non-commercial-1.0",
+    attribution="Voice by Underdog Woof (Conway Research, underdog-non-commercial-1.0)",
+    files=(
+        ModelFile(
+            name="LICENSE",
+            bytes=7612,
+            sha256="2377052f004d3c8cf44e1984d1583c17936781f9e697253e048b991ff09f5e6b",
+        ),
+        ModelFile(
+            name="NOTICE",
+            bytes=919,
+            sha256="0849de251c109869d24f8a0b520260afa10594334ae3d0c06b75e68be1e2c623",
+        ),
+        ModelFile(
+            name="woof_int8.npz",
+            bytes=40595426,
+            sha256="d895fbbe84b8f4f461e3e94ab48b1164353b1988ce8d365f5aa8263d0de1203e",
+        ),
+        ModelFile(
+            name="underdog_woof/__init__.py",
+            bytes=3002,
+            sha256="aaacf02b28eabce10280a60c2699d4e40d4ca5aa22170d169b64943fee7849f7",
+        ),
+        ModelFile(
+            name="underdog_woof/__main__.py",
+            bytes=832,
+            sha256="737f9823169c5337f49dbc27ab51f0ceab5d5d0302e6c0f3aad051ad13562a3b",
+        ),
+        ModelFile(
+            name="underdog_woof/normalize.py",
+            bytes=47736,
+            sha256="f6d7c39ec8a58bb6ab1d36ee6ee0eae3c543aac8dddaa29f4065e72706c7c044",
+        ),
+        ModelFile(
+            name="underdog_woof/respell.py",
+            bytes=4248,
+            sha256="6bf6bd4760474b991230a523d3f17b423012646737000b8974bd257875308a71",
+        ),
+        ModelFile(
+            name="underdog_woof/respell.tsv",
+            bytes=590622,
+            sha256="4c700d4015390bb6e34c1f7362f87ea75acfb45144d2fbc45cf00d5739b66abc",
+        ),
+        ModelFile(
+            name="underdog_woof/runtime.py",
+            bytes=15964,
+            sha256="e22d1e2a92f4d28c3784abbb889d77609dcecd1856bf6e65f03432b803a8d220",
+        ),
+        ModelFile(
+            name="underdog_woof/textsplit.py",
+            bytes=2982,
+            sha256="f46ae52b24fae666ebe1dc55ebf644da757f238f1bb0408a3cc2dadb39eaf6e8",
+        ),
+    ),
+)
+
 ASSETS: dict[str, ModelAsset] = {
     PARAKEET_TDT_0_6B_V2.id: PARAKEET_TDT_0_6B_V2,
+    UNDERDOG_WOOF.id: UNDERDOG_WOOF,
 }
 
 DEFAULT_STT_ASSET_ID = PARAKEET_TDT_0_6B_V2.id
+DEFAULT_TTS_ASSET_ID = UNDERDOG_WOOF.id
 
 
 def get_asset(asset_id: str) -> ModelAsset:
@@ -100,3 +166,7 @@ def get_asset(asset_id: str) -> ModelAsset:
 
 def stt_assets() -> list[ModelAsset]:
     return [asset for asset in ASSETS.values() if asset.engine == "onnx-asr"]
+
+
+def tts_assets() -> list[ModelAsset]:
+    return [asset for asset in ASSETS.values() if asset.engine == "underdog-woof"]

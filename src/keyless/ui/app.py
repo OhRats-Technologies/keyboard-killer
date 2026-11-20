@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QThread, Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -42,6 +43,28 @@ from keyless.ui.transcript_overlay import TranscriptOverlayController
 from keyless.ui.tray import make_icon
 
 
+class _UpdateWorker(QThread):
+    checked = Signal(object)
+    applied = Signal(bool, str)
+
+    def __init__(self, updater, *, apply: bool = False, channel: str = "stable") -> None:
+        super().__init__()
+        self._updater = updater
+        self._apply = apply
+        self._channel = channel
+
+    def run(self) -> None:
+        if self._apply:
+            try:
+                ok, msg = self._updater.apply_update()
+            except Exception as exc:
+                ok, msg = False, str(exc)
+            self.applied.emit(ok, msg)
+            return
+        state = self._updater.check_for_updates(channel=self._channel)
+        self.checked.emit(state)
+
+
 class HomePanel(QWidget):
     """Single calm control surface: Start/Pause, live gaze preview, quick switches, recent activity."""
 
@@ -57,6 +80,27 @@ class HomePanel(QWidget):
         # ---- Left column: hero state + primary controls + quick toggles
         left = QVBoxLayout()
         left.setSpacing(16)
+
+        # Quiet t3code-style update pill (hidden unless a newer release is found)
+        self.update_banner = Card(subtle=True)
+        self.update_banner.layout.setContentsMargins(14, 10, 14, 10)
+        self.update_banner.layout.setSpacing(8)
+        upd_row = QHBoxLayout()
+        upd_row.setSpacing(10)
+        self.update_label = QLabel("")
+        self.update_label.setObjectName("Heading")
+        upd_row.addWidget(self.update_label, 1)
+        self.update_apply_btn = QPushButton("Update")
+        self.update_apply_btn.setObjectName("Primary")
+        self.update_apply_btn.clicked.connect(window.apply_available_update)
+        upd_row.addWidget(self.update_apply_btn)
+        self.update_dismiss_btn = QPushButton("Dismiss")
+        self.update_dismiss_btn.setObjectName("Ghost")
+        self.update_dismiss_btn.clicked.connect(window.dismiss_available_update)
+        upd_row.addWidget(self.update_dismiss_btn)
+        self.update_banner.layout.addLayout(upd_row)
+        self.update_banner.setVisible(False)
+        left.addWidget(self.update_banner)
 
         status_row = QHBoxLayout()
         status_row.setSpacing(8)
@@ -393,6 +437,8 @@ class MainWindow(QMainWindow):
         self._flow_window: OnboardingWindow | None = None
         self._inline_setup: OnboardingWidget | None = None
         self._calib_proc: subprocess.Popen[bytes] | None = None
+        self._update_worker: _UpdateWorker | None = None
+        self._updater = None
         self._display_layout = None
         self._shutdown = False
 
@@ -463,6 +509,8 @@ class MainWindow(QMainWindow):
             on_config_changed=self.apply_live_config_change,
             on_calibrate=self.launch_calibration,
             on_run_setup=self.show_inline_setup,
+            on_check_updates=lambda: self.check_for_updates(force=True),
+            on_apply_update=self.apply_available_update,
         )
         self.pages: dict[str, QWidget] = {
             "Home": self.home,
@@ -488,6 +536,14 @@ class MainWindow(QMainWindow):
         self._calib_timer.setInterval(500)
         self._calib_timer.timeout.connect(self._poll_calibration)
 
+        # Background auto-update check (t3code cadence: 12s after start, then every 4 hours)
+        self._update_poll_timer = QTimer(self)
+        self._update_poll_timer.setInterval(4 * 60 * 60 * 1000)
+        self._update_poll_timer.timeout.connect(lambda: self.check_for_updates(force=False))
+        if self.enable_previews and getattr(self.config, "auto_update_checks", True):
+            QTimer.singleShot(12_000, lambda: self.check_for_updates(force=False))
+            self._update_poll_timer.start()
+
     @property
     def display_layout(self):
         if self._display_layout is None:
@@ -502,6 +558,69 @@ class MainWindow(QMainWindow):
             self.controller.start()
             self.home.poll_state()
 
+    def check_for_updates(self, *, force: bool = True) -> None:
+        if self._shutdown or (self._update_worker is not None and self._update_worker.isRunning()):
+            return
+        from keyless.updater import Updater, normalize_channel
+
+        if self._updater is None:
+            self._updater = Updater(
+                paths=self.paths,
+                channel=normalize_channel(getattr(self.config, "update_channel", "stable")),
+            )
+        if not force and not self._updater.should_auto_check(self.config):
+            self._on_update_checked(self._updater.state)
+            return
+        self.settings.set_update_busy("Checking for updates…")
+        worker = _UpdateWorker(
+            self._updater,
+            apply=False,
+            channel=normalize_channel(getattr(self.config, "update_channel", "stable")),
+        )
+        worker.checked.connect(self._on_update_checked)
+        self._update_worker = worker
+        worker.start()
+
+    def _on_update_checked(self, state) -> None:
+        self._update_worker = None
+        skipped = (getattr(self.config, "skipped_update_version", "") or "").strip()
+        avail = state.available_version
+        show_banner = bool(avail and state.status == "available" and avail != skipped)
+        self.home.update_banner.setVisible(show_banner)
+        if show_banner and avail:
+            self.home.update_label.setText(f"Keyless {avail} is available")
+            self.home.update_apply_btn.setEnabled(True)
+            self.home.update_apply_btn.setText("Update")
+        self.settings.apply_update_state(state)
+        if self.tray is not None:
+            self.tray.set_update_available(avail if show_banner else None, self.apply_available_update)
+
+    def apply_available_update(self) -> None:
+        if self._updater is None or (self._update_worker is not None and self._update_worker.isRunning()):
+            return
+        self.home.update_apply_btn.setEnabled(False)
+        self.home.update_apply_btn.setText("Updating…")
+        self.settings.set_update_busy("Installing update…")
+        worker = _UpdateWorker(self._updater, apply=True)
+        worker.applied.connect(self._on_update_applied)
+        self._update_worker = worker
+        worker.start()
+
+    def _on_update_applied(self, ok: bool, message: str) -> None:
+        self._update_worker = None
+        self.home.update_apply_btn.setEnabled(True)
+        self.home.update_apply_btn.setText("Update" if not ok else "Updated")
+        if ok:
+            self.home.update_label.setText(message)
+        self.settings.set_update_result(ok, message)
+
+    def dismiss_available_update(self) -> None:
+        if self._updater is not None and self._updater.state.available_version:
+            self._updater.skip_version(self._updater.state.available_version, self.config)
+        self.home.update_banner.setVisible(False)
+        if self.tray is not None:
+            self.tray.set_update_available(None)
+
     def launch_calibration(self) -> None:
         if self._calib_proc is not None and self._calib_proc.poll() is None:
             return
@@ -510,8 +629,12 @@ class MainWindow(QMainWindow):
             self.controller.pause()
         self._resume_after_calib = was_listening
         try:
+            env = dict(os.environ)
+            if sys.platform == "linux" and env.get("DISPLAY") and "QT_QPA_PLATFORM" not in env:
+                env["QT_QPA_PLATFORM"] = "xcb"
             self._calib_proc = subprocess.Popen(
-                [sys.executable, "-m", "keyless.main", "calibrate"]
+                [sys.executable, "-m", "keyless.main", "calibrate"],
+                env=env,
             )
             self._calib_timer.start()
         except OSError:
@@ -635,6 +758,9 @@ class MainWindow(QMainWindow):
         self._shutdown = True
         self._status_timer.stop()
         self._calib_timer.stop()
+        self._update_poll_timer.stop()
+        if self._update_worker is not None and self._update_worker.isRunning():
+            self._update_worker.wait(2000)
         if self._inline_setup is not None:
             self._inline_setup.close_resources()
         self.settings.stop()

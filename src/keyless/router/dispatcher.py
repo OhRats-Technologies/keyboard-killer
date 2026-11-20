@@ -693,6 +693,29 @@ class VoiceCommandRouter:
             self.pointer.type_text(cmd)
             return DispatchResult("terminal", raw, cmd, payload={"command": cmd})
 
+        # 3.5. Prefix: "Ask ..." / "Assistant ..." / "Explain ..." -> Spoken AI response
+        m_ask = re.match(
+            r"^(?:ask|assistant|hey assistant|hey keyless|answer|explain)\b[\s,.:;-]*(.+)$",
+            raw,
+            flags=re.IGNORECASE,
+        )
+        if m_ask:
+            question = m_ask.group(1).strip()
+            if self.llm_agent is None:
+                return DispatchResult(
+                    "assistant_unavailable",
+                    raw,
+                    "No AI assistant provider is configured.",
+                    payload={"spoken": True},
+                )
+            reply = self.llm_agent.answer_question(question)
+            return DispatchResult(
+                "assistant",
+                raw,
+                reply,
+                payload={"reply": reply, "spoken": True},
+            )
+
         # 4. Prefix: "Browser ..." (or gaze-contextual queries like "What's this" / "Summarize this")
         m_browser = re.match(
             r"^(?:browser|firefox|web)\b[\s,.:;-]*(.+)$",

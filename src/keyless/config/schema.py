@@ -91,6 +91,14 @@ class AppConfig:
     attention_max_yaw_deg: float = 38.0
     firefox_bridge_enabled: bool = True
     firefox_bridge_port: int = 8765
+    # Phase 4: Local Underdog-Woof TTS & t3code-style update checks
+    tts_enabled: bool = False
+    tts_voice: str = "juno"
+    tts_onboarding_help: bool = True
+    tts_speak_replies: bool = True
+    auto_update_checks: bool = True
+    update_channel: str = "stable"
+    skipped_update_version: str = ""
 
     def save(self, path: Path | None = None) -> None:
         target = Path(path) if path is not None else current_paths().settings_path

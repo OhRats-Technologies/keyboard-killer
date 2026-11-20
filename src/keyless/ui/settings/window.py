@@ -53,7 +53,7 @@ from keyless.ui.components import (
 )
 from keyless.voice.stt.factory import stt_report
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 
 class MicCheckWorker(QThread):
@@ -100,9 +100,13 @@ class _ModelDownloadWorker(QThread):
     done = Signal(object)
     failed = Signal(str)
 
+    def __init__(self, parent=None, asset_id: str = "parakeet-tdt-0.6b-v2") -> None:
+        super().__init__(parent)
+        self.asset_id = asset_id
+
     def run(self) -> None:
         try:
-            asset = get_asset("parakeet-tdt-0.6b-v2")
+            asset = get_asset(self.asset_id)
             self.done.emit(download_asset(asset, progress=lambda p: self.progress.emit(p)))
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -119,6 +123,8 @@ class SettingsPanel(QWidget):
         on_config_changed: Callable[[], None] | None = None,
         on_calibrate: Callable[[], None] | None = None,
         on_run_setup: Callable[[], None] | None = None,
+        on_check_updates: Callable[[], None] | None = None,
+        on_apply_update: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
         self.paths = paths or current_paths()
@@ -126,10 +132,14 @@ class SettingsPanel(QWidget):
         self._on_config_changed = on_config_changed
         self._on_calibrate = on_calibrate
         self._on_run_setup = on_run_setup
+        self._on_check_updates = on_check_updates
+        self._on_apply_update = on_apply_update
         self._loading = True
         self._mic_worker: MicCheckWorker | None = None
         self._speech_worker: _SpeechCheckWorker | None = None
         self._dl_worker: _ModelDownloadWorker | None = None
+        self._tts_dl_worker: _ModelDownloadWorker | None = None
+        self._tts_speaker = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -214,6 +224,36 @@ class SettingsPanel(QWidget):
         self.dl_progress.setTextVisible(False)
         self.dl_progress.setVisible(False)
         voice_card.layout.addWidget(self.dl_progress)
+
+        voice_card.layout.addWidget(divider())
+
+        self.tts_enabled = QCheckBox("Speak assistant replies and setup help")
+        self.tts_enabled.setChecked(bool(getattr(self.config, "tts_enabled", False)))
+        self.tts_enabled.toggled.connect(self._auto_save)
+        voice_card.layout.addWidget(self.tts_enabled)
+
+        tts_row = QHBoxLayout()
+        tts_row.setSpacing(8)
+        self.tts_voice = QComboBox()
+        self.tts_voice.addItem("Voice: Juno (Underdog Woof)", "juno")
+        self.tts_voice.addItem("Voice: Mira (Underdog Woof)", "mira")
+        v_idx = self.tts_voice.findData(getattr(self.config, "tts_voice", "juno"))
+        self.tts_voice.setCurrentIndex(v_idx if v_idx >= 0 else 0)
+        self.tts_voice.currentIndexChanged.connect(self._auto_save)
+        tts_row.addWidget(self.tts_voice, 1)
+
+        self.tts_preview_btn = QPushButton("Test voice")
+        self.tts_preview_btn.clicked.connect(self._preview_tts)
+        tts_row.addWidget(self.tts_preview_btn)
+
+        self.tts_dl_button = QPushButton("Download voice (40 MB)")
+        self.tts_dl_button.clicked.connect(self._download_tts_model)
+        tts_row.addWidget(self.tts_dl_button)
+        voice_card.layout.addLayout(tts_row)
+
+        self.tts_status = QLabel("Voice by Underdog Woof · non-commercial license")
+        self.tts_status.setObjectName("Muted")
+        voice_card.layout.addWidget(self.tts_status)
         layout.addWidget(voice_card)
 
         # ------------------------------------------------------------------ Camera & Gaze
@@ -384,6 +424,29 @@ class SettingsPanel(QWidget):
         diag_actions.addWidget(about)
         diag_card.layout.addLayout(diag_actions)
 
+        diag_card.layout.addWidget(divider())
+        upd_row = QHBoxLayout()
+        upd_row.setSpacing(8)
+        self.auto_updates = QCheckBox("Check for updates automatically")
+        self.auto_updates.setChecked(bool(getattr(self.config, "auto_update_checks", True)))
+        self.auto_updates.toggled.connect(self._auto_save)
+        upd_row.addWidget(self.auto_updates, 1)
+        self.check_updates_btn = QPushButton("Check for updates")
+        self.check_updates_btn.clicked.connect(self._trigger_check_updates)
+        upd_row.addWidget(self.check_updates_btn)
+        self.update_now_btn = QPushButton("Update now")
+        self.update_now_btn.setObjectName("Primary")
+        self.update_now_btn.setVisible(False)
+        self.update_now_btn.clicked.connect(self._trigger_apply_update)
+        upd_row.addWidget(self.update_now_btn)
+        diag_card.layout.addLayout(upd_row)
+
+        self.update_status = QLabel("")
+        self.update_status.setObjectName("Muted")
+        self.update_status.setWordWrap(True)
+        self.update_status.setVisible(False)
+        diag_card.layout.addWidget(self.update_status)
+
         self.diagnostics.body_layout.addWidget(diag_card)
         layout.addWidget(self.diagnostics)
         layout.addStretch(1)
@@ -455,6 +518,21 @@ class SettingsPanel(QWidget):
         calibrated = self.paths.calibration_path.exists()
         self.calib_status.setText("Eye tracking calibrated" if calibrated else "Not calibrated yet")
         self.calibrate_button.setText("Recalibrate" if calibrated else "Calibrate")
+
+        try:
+            from keyless.voice.tts import tts_report
+
+            t_rep = tts_report(self.paths)
+            t_ready = bool(t_rep["ready"])
+            self.tts_dl_button.setVisible(not t_ready)
+            self.tts_preview_btn.setEnabled(t_ready)
+            self.tts_status.setText(
+                "Voice by Underdog Woof (ready offline · non-commercial license)"
+                if t_ready
+                else "Voice by Underdog Woof (optional 40 MB download · non-commercial license)"
+            )
+        except Exception:
+            pass
         self._loading = False
 
     def _sync_hotkey_visibility(self) -> None:
@@ -604,6 +682,75 @@ class SettingsPanel(QWidget):
         else:
             self.refresh()
 
+    # ------------------------------------------------------------------ TTS & Updates
+
+    def _download_tts_model(self) -> None:
+        if self._tts_dl_worker is not None and self._tts_dl_worker.isRunning():
+            return
+        self.tts_dl_button.setEnabled(False)
+        self.tts_dl_button.setText("Downloading…")
+        worker = _ModelDownloadWorker(self, asset_id="underdog-woof")
+        worker.progress.connect(
+            lambda p: self.tts_dl_button.setText(f"Downloading {int(p.percent)}%")
+        )
+        worker.done.connect(lambda _r: self._finish_tts_dl(""))
+        worker.failed.connect(self._finish_tts_dl)
+        self._tts_dl_worker = worker
+        worker.start()
+
+    def _finish_tts_dl(self, err: str) -> None:
+        self._tts_dl_worker = None
+        self.tts_dl_button.setEnabled(True)
+        self.tts_dl_button.setText("Retry voice" if err else "Download voice (40 MB)")
+        if err:
+            self.tts_status.setText(f"Voice download failed: {err}")
+        else:
+            self.tts_enabled.setChecked(True)
+            self.refresh()
+
+    def _preview_tts(self) -> None:
+        from keyless.voice.tts import WoofSpeaker
+
+        if self._tts_speaker is None:
+            self._tts_speaker = WoofSpeaker(paths=self.paths, enabled=True)
+        voice = str(self.tts_voice.currentData() or "juno")
+        self._tts_speaker.speak(
+            f"Hi, this is {voice.capitalize()} from Keyless, powered by Underdog Woof.",
+            voice=voice,
+            interrupt=True,
+        )
+
+    def _trigger_check_updates(self) -> None:
+        if self._on_check_updates is not None:
+            self._on_check_updates()
+
+    def _trigger_apply_update(self) -> None:
+        if self._on_apply_update is not None:
+            self._on_apply_update()
+
+    def set_update_busy(self, message: str) -> None:
+        self.check_updates_btn.setEnabled(False)
+        self.update_status.setText(message)
+        self.update_status.setVisible(True)
+
+    def apply_update_state(self, state) -> None:
+        self.check_updates_btn.setEnabled(True)
+        avail = getattr(state, "available_version", None)
+        notes = getattr(state, "release_notes", None) or []
+        summary = getattr(state, "message", "") or ""
+        if notes and avail:
+            summary += "\n• " + "\n• ".join(notes[:3])
+        self.update_status.setText(summary)
+        self.update_status.setVisible(bool(summary))
+        self.update_now_btn.setVisible(bool(avail and getattr(state, "status", "") == "available"))
+        self.update_now_btn.setEnabled(True)
+
+    def set_update_result(self, ok: bool, message: str) -> None:
+        self.check_updates_btn.setEnabled(True)
+        self.update_now_btn.setEnabled(not ok)
+        self.update_status.setText(message)
+        self.update_status.setVisible(bool(message))
+
     # ------------------------------------------------------------------ Diagnostics
 
     def refresh_diagnostics(self) -> None:
@@ -657,11 +804,17 @@ class SettingsPanel(QWidget):
         cfg.llm_model = self.llm_model.text().strip()
         cfg.acp_agent_id = self.acp_agent.text().strip() or "opencode"
         cfg.gaze_vlm_remote_consent = self.vlm_consent.isChecked()
+        cfg.tts_enabled = self.tts_enabled.isChecked()
+        cfg.tts_voice = str(self.tts_voice.currentData() or "juno")
+        cfg.auto_update_checks = self.auto_updates.isChecked()
         cfg.save(self.paths.settings_path)
         if self._on_config_changed is not None:
             self._on_config_changed()
 
     def stop(self) -> None:
-        for worker in (self._mic_worker, self._speech_worker, self._dl_worker):
+        if self._tts_speaker is not None:
+            self._tts_speaker.close()
+            self._tts_speaker = None
+        for worker in (self._mic_worker, self._speech_worker, self._dl_worker, self._tts_dl_worker):
             if worker is not None and worker.isRunning():
                 worker.wait(3000)

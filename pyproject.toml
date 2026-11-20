@@ -1,6 +1,6 @@
 [project]
 name = "keyless"
-version = "0.1.0"
+version = "0.1.1"
 description = "Dual-camera stereo gaze tracking, pop-click detection, and voice/AI control for Linux Wayland"
 readme = "README.md"
 requires-python = ">=3.13"

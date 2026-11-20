@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.1] - 2026-11-20
+
+- **Translucent interactive calibration overlay** (`ui/calibration_overlay.py`): replaces the opaque fullscreen OpenCV blackout with a calm, frameless per-pixel translucent desktop overlay (XWayland-positioned on Linux Wayland), floating pill HUD controls, toggleable veil opacity, and live gaze + drag/spot-fix refinement directly over desktop apps.
+- **On-device TTS via ConwayResearch/Underdog-Woof** (`voice/tts.py`, pinned in `models/catalog.py`): offline 24 kHz Juno/Mira voices with SHA-256 verification, spoken AI assistant answers (`ask ...` / `assistant ...`), automatic mic suppression while speaking, optional onboarding & calibration spoken help, and voice settings + attribution.
+- **Automatic update checks & installer** (`updater.py`, `keyless update` CLI): modeled after `pingdotgg/t3code` with 4-hour background GitHub Releases checks, prerelease/stable channels, cleaned release notes, SHA-256 verification, Home banner, Tray action, Settings controls, and support for source/git, AppImage, and `.deb` updates.
+
 ## [0.1.0] - 2026-11-20
 
 Initial Keyless release:

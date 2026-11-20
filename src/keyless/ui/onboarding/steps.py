@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from collections.abc import Callable
@@ -213,9 +214,13 @@ class _DownloadWorker(QThread):
     done = Signal(object)
     failed = Signal(str)
 
+    def __init__(self, asset_id: str = "parakeet-tdt-0.6b-v2") -> None:
+        super().__init__()
+        self.asset_id = asset_id
+
     def run(self) -> None:
         try:
-            asset = get_asset("parakeet-tdt-0.6b-v2")
+            asset = get_asset(self.asset_id)
             receipt = download_asset(asset, progress=lambda p: self.progress.emit(p))
             self.done.emit(receipt)
         except Exception as exc:
@@ -758,7 +763,7 @@ class CalibrationPage(StepPage):
             self.status.setObjectName("Muted")
             self.run_button.setText("Start calibration")
             self.run_button.setObjectName("Primary")
-            self.hint.setText("Opens a full-screen calibration window. You will return here automatically when finished.")
+            self.hint.setText("Opens a calm, translucent calibration overlay over your desktop. You will return here automatically when finished.")
         for w in (self.status, self.run_button):
             w.style().unpolish(w)
             w.style().polish(w)
@@ -771,7 +776,13 @@ class CalibrationPage(StepPage):
         if self._proc is not None and self._proc.poll() is None:
             return
         try:
-            self._proc = subprocess.Popen([sys.executable, "-m", "keyless.main", "calibrate"])
+            env = dict(os.environ)
+            if sys.platform == "linux" and env.get("DISPLAY") and "QT_QPA_PLATFORM" not in env:
+                env["QT_QPA_PLATFORM"] = "xcb"
+            self._proc = subprocess.Popen(
+                [sys.executable, "-m", "keyless.main", "calibrate"],
+                env=env,
+            )
             self.run_button.setEnabled(False)
             self.run_button.setText("Calibrating…")
             self.set_problem("")
@@ -818,6 +829,14 @@ class ReadyPage(StepPage):
         self.body.addStretch(1)
 
 
+_STEP_VOICE_HELP = {
+    OnboardingStep.WELCOME: "Welcome to Keyless. Everything runs privately on your device. Press Get started to check your camera and microphone.",
+    OnboardingStep.DEVICES: "Check that your microphone and camera are ready, then download the offline speech model if needed.",
+    OnboardingStep.CALIBRATION: "Start eye calibration to open the translucent overlay. Follow each dot calmly with your eyes.",
+    OnboardingStep.READY: "You are ready to go hands-free. Press Start listening whenever you want Keyless active.",
+}
+
+
 class OnboardingWidget(QWidget):
     """Single-column, distraction-free setup widget (embeds directly inside MainWindow)."""
 
@@ -850,13 +869,23 @@ class OnboardingWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
 
-        # Slim top header: step indicator + thin 4px progress bar (no second sidebar!)
+        # Slim top header: step indicator + optional voice guide + thin 4px progress bar
         top = QHBoxLayout()
         self.step_label = QLabel("")
         self.step_label.setObjectName("Muted")
         top.addWidget(self.step_label)
         top.addStretch(1)
+        self._tts_dl_worker: _DownloadWorker | None = None
+        self._speaker = None
+        self.voice_help_button = QPushButton("")
+        self.voice_help_button.setObjectName("Ghost")
+        self.voice_help_button.setFlat(True)
+        self.voice_help_button.setFixedHeight(20)
+        self.voice_help_button.setStyleSheet("padding: 0px 4px; border: none; font-size: 12px;")
+        self.voice_help_button.clicked.connect(self._toggle_voice_help)
+        top.addWidget(self.voice_help_button)
         layout.addLayout(top)
+        self._sync_voice_help_button()
 
         self.progress = QProgressBar()
         self.progress.setRange(0, len(STEPS) - 1)
@@ -915,6 +944,81 @@ class OnboardingWidget(QWidget):
         self.next_button.setText(page.next_label)
         self.skip_button.setVisible(step in OPTIONAL_STEPS)
         page.on_enter()
+        self._maybe_speak_step(step)
+
+    def _voice_ready(self) -> bool:
+        try:
+            from keyless.voice.tts import tts_report
+
+            return bool(tts_report(self.paths)["ready"])
+        except Exception:
+            return False
+
+    def _sync_voice_help_button(self) -> None:
+        if not self._voice_ready():
+            self.voice_help_button.setText("Voice help (40 MB)")
+        elif getattr(self.config, "tts_onboarding_help", True):
+            self.voice_help_button.setText("Voice help: On")
+        else:
+            self.voice_help_button.setText("Voice help: Off")
+
+    def _ensure_speaker(self):
+        if self._speaker is None:
+            from keyless.voice.tts import WoofSpeaker
+
+            self._speaker = WoofSpeaker(
+                paths=self.paths,
+                voice=getattr(self.config, "tts_voice", "juno"),
+                enabled=True,
+            )
+        return self._speaker
+
+    def _maybe_speak_step(self, step: OnboardingStep) -> None:
+        if not getattr(self.config, "tts_onboarding_help", True) or not self._voice_ready():
+            return
+        cue = _STEP_VOICE_HELP.get(step, "")
+        if cue:
+            try:
+                self._ensure_speaker().speak(cue, interrupt=True)
+            except Exception:
+                pass
+
+    def _toggle_voice_help(self) -> None:
+        if not self._voice_ready():
+            if self._tts_dl_worker is not None and self._tts_dl_worker.isRunning():
+                return
+            self.voice_help_button.setEnabled(False)
+            self.voice_help_button.setText("Downloading voice…")
+            worker = _DownloadWorker("underdog-woof")
+            worker.progress.connect(
+                lambda p: self.voice_help_button.setText(f"Voice {int(p.percent)}%")
+            )
+            worker.done.connect(lambda _r: self._finish_tts_download(""))
+            worker.failed.connect(self._finish_tts_download)
+            self._tts_dl_worker = worker
+            worker.start()
+            return
+        self.config.tts_onboarding_help = not getattr(self.config, "tts_onboarding_help", True)
+        if self.config.tts_onboarding_help:
+            self.config.tts_enabled = True
+        self.config.save(self.paths.settings_path)
+        self._sync_voice_help_button()
+        if self.config.tts_onboarding_help:
+            self._maybe_speak_step(self.flow.step)
+        elif self._speaker is not None:
+            self._speaker.stop()
+
+    def _finish_tts_download(self, err: str) -> None:
+        self._tts_dl_worker = None
+        self.voice_help_button.setEnabled(True)
+        if not err:
+            self.config.tts_onboarding_help = True
+            self.config.tts_enabled = True
+            self.config.save(self.paths.settings_path)
+            self._sync_voice_help_button()
+            self._maybe_speak_step(self.flow.step)
+        else:
+            self.voice_help_button.setText("Voice download failed")
 
     def next(self) -> None:
         page = self.pages[self.flow.step]
@@ -946,6 +1050,11 @@ class OnboardingWidget(QWidget):
         devices_page = self.pages.get(OnboardingStep.DEVICES)
         if isinstance(devices_page, DevicesPage):
             devices_page.close_resources()
+        if self._speaker is not None:
+            self._speaker.close()
+            self._speaker = None
+        if self._tts_dl_worker is not None and self._tts_dl_worker.isRunning():
+            self._tts_dl_worker.wait(2000)
 
 
 class OnboardingWindow(QDialog):

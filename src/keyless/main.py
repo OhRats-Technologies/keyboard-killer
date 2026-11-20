@@ -262,8 +262,9 @@ def calibrate(
     gain2: int | None = typer.Option(None, help="Cam2 sensor gain"),
     connector: str | None = typer.Option(None, help="Target monitor connector (default: primary)"),
     output: Path = typer.Option(DEFAULT_CALIB_PATH, help="Output calibration JSON path"),
+    legacy_cv: bool = typer.Option(False, "--legacy-cv", help="Use legacy fullscreen OpenCV window"),
 ) -> None:
-    """Run hybrid stereo calibration (anchors + gliding sweeps + Left-Click pursuit trainer)."""
+    """Run interactive stereo/mono gaze calibration overlay."""
     cfg = AppConfig.load()
     if exp1 is not None:
         cfg.cam1_exposure = exp1
@@ -280,6 +281,7 @@ def calibrate(
         calib_path=output,
         samples_per_point=samples,
         connector=connector,
+        legacy_cv=legacy_cv,
     )
     cfg.save(DEFAULT_CONFIG_PATH)
     extra = (
@@ -782,17 +784,59 @@ app.add_typer(models_app, name="models")
 
 
 def _model_asset(which: str):
-    from keyless.models.catalog import get_asset, stt_assets
+    from keyless.models.catalog import get_asset, stt_assets, tts_assets
 
     if which in ("stt", "default"):
         assets = stt_assets()
         if not assets:
             raise typer.BadParameter("No STT assets are in the catalog.")
         return assets[0]
+    if which in ("tts", "woof", "underdog"):
+        assets = tts_assets()
+        if not assets:
+            raise typer.BadParameter("No TTS assets are in the catalog.")
+        return assets[0]
     try:
         return get_asset(which)
     except KeyError as exc:
         raise typer.BadParameter(str(exc)) from exc
+
+
+@app.command("update")
+def update_cmd(
+    check: bool = typer.Option(False, "--check", help="Only check for a newer release"),
+    prerelease: bool = typer.Option(False, "--pre", help="Include prerelease builds"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Apply an available update without prompting"),
+) -> None:
+    """Check for Keyless updates and install new releases (source, AppImage, or .deb)."""
+    from keyless.updater import Updater
+
+    cfg = AppConfig.load()
+    channel = "prerelease" if prerelease else getattr(cfg, "update_channel", "stable")
+    updater = Updater(channel=channel)  # type: ignore[arg-type]
+    state = updater.check_for_updates(channel=channel)  # type: ignore[arg-type]
+    if state.status == "error":
+        console.print(f"[red]{state.message}[/red]")
+        raise typer.Exit(code=1)
+    if state.status != "available" or not state.available_version:
+        console.print(f"[green]{state.message}[/green] (install mode: {state.install_mode})")
+        return
+
+    console.print(
+        f"[bold green]Keyless {state.available_version} is available[/bold green] "
+        f"(current: {state.current_version}, mode: {state.install_mode})"
+    )
+    for note in state.release_notes[:5]:
+        console.print(f"  • {note}")
+    if check:
+        return
+    if not yes and not typer.confirm(f"Install Keyless {state.available_version} now?", default=True):
+        return
+    ok, msg = updater.apply_update()
+    if not ok:
+        console.print(f"[red]{msg}[/red]")
+        raise typer.Exit(code=1)
+    console.print(f"[green]{msg}[/green]")
 
 
 @models_app.command("status")

@@ -1329,8 +1329,9 @@ def run_calibration_ui(
     sweep1_duration_sec: float = 30.0,
     sweep2_duration_sec: float = 28.0,
     connector: str | None = None,
+    legacy_cv: bool = False,
 ) -> StereoGazeModel:
-    """Launch High-Density Stereo Calibration (Anchors + Continuous Gliding Sweeps + Left-Click Pursuit)."""
+    """Launch interactive gaze calibration (translucent desktop overlay by default)."""
     config.camera_mode, config.cam1_by_id, config.cam2_by_id = resolve_camera_config(
         config.camera_mode, config.cam1_by_id, config.cam2_by_id
     )
@@ -1342,6 +1343,24 @@ def run_calibration_ui(
             avail = ", ".join(m.connector for m in layout.monitors)
             raise ValueError(f"Monitor '{connector}' not found. Available: {avail}")
         target_mon = matches[0]
+
+    if not legacy_cv:
+        try:
+            from keyless.ui.calibration_overlay import run_translucent_calibration_overlay
+
+            return run_translucent_calibration_overlay(
+                config=config,
+                calib_path=calib_path,
+                target_mon=target_mon,
+                layout=layout,
+                samples_per_point=samples_per_point,
+                settle_sec=settle_sec,
+                pose_settle_sec=pose_settle_sec,
+                sweep1_duration_sec=sweep1_duration_sec,
+                sweep2_duration_sec=sweep2_duration_sec,
+            )
+        except ImportError:
+            pass
 
     dataset_path = _default_dataset_path(calib_path)
     saved_replay = _load_replay_dataset(dataset_path, config.cam1_by_id, config.cam2_by_id)
