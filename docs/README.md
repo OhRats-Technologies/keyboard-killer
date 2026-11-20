@@ -12,7 +12,7 @@
 - **Providers**: `Provider` contract; `openai_compat` with presets, `ollama`, and `acp`; ACP registry fetch with cached/offline fallback; OS-keychain secrets; role capability checks; remote-VLM consent.
 - **Diagnostics**: `doctor` and `doctor --json` over the same report the UI uses.
 - **UI**: PySide6 main window, tray, resumable onboarding, settings, SQLite history, light/dark tokens, and the D3 X11 overlay / GNOME Wayland tray-toast fallback.
-- **Packaging**: a self-contained Linux `.deb` and AppImage with the udev rule, desktop entry, and optional systemd user unit.
+- **Packaging**: a self-contained Linux `.deb` and AppImage with the udev rule, desktop entry, and optional systemd user unit, plus the [landing page](https://keyboard-killer.ohrats.party/) on the OhRats UI kit and a tag-driven release mirror.
 
 ## What is still open
 

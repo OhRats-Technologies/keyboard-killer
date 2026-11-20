@@ -4,23 +4,28 @@ Dual-camera stereo gaze, acoustic pop-click, and low-latency voice control for t
 
 ## Install (Linux)
 
-Build the self-contained packages:
+Download and run the installer:
+
+```bash
+curl -fsSL https://keyboard-killer.ohrats.party/install.sh | sh
+```
+
+The installer verifies `SHA256SUMS`, uses `apt` for the self-contained `.deb` on
+Debian/Ubuntu, and otherwise installs the AppImage for the current user. The
+landing page with package and AppImage links is
+[**keyboard-killer.ohrats.party**](https://keyboard-killer.ohrats.party/).
+
+Build the packages locally when needed:
 
 ```bash
 uv run python packaging/linux/build_deb.py --appimage
-```
-
-Install the `.deb` (the AppImage is portable):
-
-```bash
-sudo apt install ./dist/keyboard-killer_0.1.0_amd64.deb
 ```
 
 The `.deb` installs the app under `/opt/keyboard-killer`, the `/dev/uinput` udev rule, a desktop entry, and an optional systemd user unit. Open **Keyboard-Killer** from the application menu. No terminal, `uv`, or JSON editing is required for first run.
 
 First run is a guided setup: permissions → two cameras → calibration → speech model → optional AI provider → practice → ready.
 
-> The package bundles a relocatable Python runtime. This build was produced and smoke-tested on Arch Linux (KDE Wayland); installing the `.deb` on Ubuntu/Debian and the full camera/calibration/uinput path are hardware checks that have not been performed here.
+> The package bundles a relocatable Python runtime. The public AppImage installer was smoke-tested from the site mirror; installing the `.deb` on Ubuntu/Debian and the full camera/calibration/uinput path remain hardware checks.
 
 ## CLI fallback
 
@@ -84,6 +89,12 @@ uv run pytest tests/ui -q          # headless Qt, no display needed
 ```
 
 Hardware checks are manual and not claimed as working: two cameras together, calibration, `/dev/uinput` injection, screen capture, and an acoustic utterance through the microphone. `doctor` reports their current state.
+
+## Releases
+
+Tag-driven, RC-style releases are documented in [docs/RELEASES.md](docs/RELEASES.md).
+The tag verifies CI, builds the `.deb` and AppImage, mirrors the public assets to
+`keyboard-killer.ohrats.party/releases`, and runs an installer smoke test.
 
 ## Layout
 

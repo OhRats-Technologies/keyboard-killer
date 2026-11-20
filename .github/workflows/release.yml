@@ -68,7 +68,7 @@ jobs:
       - name: Build self-contained packages
         run: |
           VERSION="$(./scripts/check-version.sh)"
-          uv run --python 3.13 python packaging/linux/build_deb.py \
+          uv run --python 3.13 python packaging/linux/build_deb.py --force-runtime \
             --appimage --output "dist/keyboard-killer_${VERSION}_amd64.deb"
           cp "dist/keyboard-killer_${VERSION}_amd64.deb" dist/keyboard-killer_amd64.deb
           cp "dist/Keyboard-Killer-${VERSION}-x86_64.AppImage" dist/keyboard-killer-x86_64.AppImage
