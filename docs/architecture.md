@@ -205,7 +205,7 @@ The UI is its own layer; it is not embedded in the daemon. Surfaces:
 | History | Recent actions, target, result, latency, tier, app; retry/copy |
 | Diagnostics | `doctor` summary, camera/mic previews, capability report, logs |
 
-Design rules adapted from Hex:
+The desktop shell and landing page use the OhRats UI kit as the shared visual language: Inter for prose, Space Mono for labels/state, warm neutrals, one brown border, sharp edges, and light/dark tokens. Design rules adapted from Hex:
 
 - One primary action per surface; everything else is Secondary/Ghost.
 - Sentence case; one line per control; no intro paragraphs above cards.

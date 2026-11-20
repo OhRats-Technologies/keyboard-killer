@@ -11,8 +11,8 @@
 - **STT**: `SttEngine` contract, Parakeet TDT 0.6B v2 (CPU int8 default, CUDA opt-in), pinned catalog/downloader/receipts. faster-whisper was removed in 0.1.1; Parakeet is the only engine.
 - **Providers**: `Provider` contract; `openai_compat` with presets, `ollama`, and `acp`; ACP registry fetch with cached/offline fallback; OS-keychain secrets; role capability checks; remote-VLM consent.
 - **Diagnostics**: `doctor` and `doctor --json` over the same report the UI uses.
-- **UI**: PySide6 main window, tray, resumable onboarding, settings, SQLite history, light/dark tokens, and the D3 X11 overlay / GNOME Wayland tray-toast fallback.
-- **Packaging**: a self-contained Linux `.deb` and AppImage with the udev rule, desktop entry, and optional systemd user unit, plus the [landing page](https://keyboard-killer.ohrats.party/) on the OhRats UI kit and a tag-driven release mirror.
+- **UI**: PySide6 main window, tray, resumable onboarding, settings, SQLite history, and the D3 X11 overlay / GNOME Wayland tray-toast fallback. The Qt app uses the OhRats UI kit directly: Inter + Space Mono, warm neutrals, brown borders, sharp edges, light/dark tokens.
+- **Packaging**: a self-contained Linux `.deb` and AppImage with the udev rule, desktop entry, and optional systemd user unit. Assets are public on GitHub and mirrored at [keyboard-killer.ohrats.party](https://keyboard-killer.ohrats.party/); the landing page and Qt app share the OhRats UI kit.
 
 ## What is still open
 
