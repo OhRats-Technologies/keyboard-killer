@@ -100,6 +100,7 @@ def test_stereo_degree2_model_fits_interactions_and_roundtrips(tmp_path) -> None
         monitor=mon,
         layout=layout,
         groups=groups,
+        camera_mode="mono",
     )
     assert model.rmse_x < 15.0
     assert model.rmse_y < 15.0
@@ -136,6 +137,7 @@ def test_stereo_degree2_model_fits_interactions_and_roundtrips(tmp_path) -> None
     calib_file = tmp_path / "stereo_calib.json"
     model.save(calib_file)
     loaded = StereoGazeModel.load(calib_file)
+    assert loaded.camera_mode == "mono"
     pred_orig = model.predict(X[0])
     pred_loaded = loaded.predict(X[0])
     assert np.allclose(pred_orig, pred_loaded, atol=1e-6)
