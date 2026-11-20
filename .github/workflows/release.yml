@@ -76,6 +76,18 @@ jobs:
           (cd dist && sha256sum keyboard-killer_amd64.deb keyboard-killer-x86_64.AppImage install.sh > SHA256SUMS)
           ar t dist/keyboard-killer_amd64.deb
           (cd dist && sha256sum -c SHA256SUMS)
+      - name: Mirror release assets to keyboard-killer.ohrats.party
+        env:
+          COOLIFY_SSH_KEY: ${{ secrets.COOLIFY_SSH_KEY }}
+          COOLIFY_HOST: ${{ secrets.COOLIFY_HOST }}
+        shell: bash
+        run: |
+          install -m 600 /dev/null "$RUNNER_TEMP/deploy_key"
+          printf '%s\n' "$COOLIFY_SSH_KEY" > "$RUNNER_TEMP/deploy_key"
+          chmod 600 "$RUNNER_TEMP/deploy_key"
+          scp -i "$RUNNER_TEMP/deploy_key" -o StrictHostKeyChecking=accept-new \
+            dist/keyboard-killer_amd64.deb dist/keyboard-killer-x86_64.AppImage \
+            dist/SHA256SUMS "root@${COOLIFY_HOST}:/data/keyboard-killer-releases/"
       - name: Publish immutable GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -96,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      KEYBOARD_KILLER_RELEASE_BASE: https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+      KEYBOARD_KILLER_RELEASE_BASE: https://keyboard-killer.ohrats.party/releases
       KEYBOARD_KILLER_APPIMAGE: "1"
       KEYBOARD_KILLER_APPIMAGE_DIR: ${{ github.workspace }}/.install/app
       KEYBOARD_KILLER_BIN_DIR: ${{ github.workspace }}/.install/bin
