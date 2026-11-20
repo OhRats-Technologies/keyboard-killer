@@ -282,11 +282,16 @@ def calibrate(
         connector=connector,
     )
     cfg.save(DEFAULT_CONFIG_PATH)
+    extra = (
+        f"monitors={len(model.monitors)}, mode={model.camera_mode}"
+        if hasattr(model, "monitors")
+        else f"rbf_centers={len(model.rbf_centers)}"
+    )
     console.print(
         f"[green]Calibration saved to {output}[/green] | "
         f"Train RMSE: X={model.rmse_x:.1f}px, Y={model.rmse_y:.1f}px | "
         f"CV RMSE: X={model.cv_rmse_x:.1f}px, Y={model.cv_rmse_y:.1f}px | "
-        f"samples={model.n_train_samples}, rbf_centers={len(model.rbf_centers)}"
+        f"samples={model.n_train_samples}, {extra}"
     )
 
 

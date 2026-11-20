@@ -31,12 +31,14 @@ from keyboard_killer.voice.stt.factory import SttModelMissing, create_stt_engine
 from keyboard_killer.vision.calibrator import (
     StereoGazeModel,
     append_harvested_calibration_samples,
+    load_gaze_model,
 )
 from keyboard_killer.vision.cursor_gimbal import (
     GazeGimbalController,
     GimbalStepResult,
     run_vision_loop,
 )
+from keyboard_killer.vision.geo_gaze import GeoGazeModel, GeoGazeTracker
 from keyboard_killer.platform.linux.accessibility import LinuxDesktopAccessibilityBridge
 from keyboard_killer.platform.linux.screen import monitor_at_point
 from keyboard_killer.vision.online_learner import OnlineGazeLearner
@@ -59,13 +61,13 @@ def run_combined_daemon(
         raise ValueError("At least one of vision or audio must be enabled.")
 
     layout = get_display_layout()
-    model: StereoGazeModel | None = None
+    model: StereoGazeModel | GeoGazeModel | None = None
     if enable_vision:
         if calib_path is None or not calib_path.exists():
             raise FileNotFoundError(
                 f"Calibration file not found: {calib_path}. Run `uv run keyboard-killer calibrate` first."
             )
-        model = StereoGazeModel.load(calib_path, strip_pose_translation=True)
+        model = load_gaze_model(calib_path, layout=layout, strip_pose_translation=True)
     pointer: PointerBackend = (
         DryRunPointerBackend(layout.total_width, layout.total_height)
         if dry_run
@@ -77,6 +79,7 @@ def run_combined_daemon(
     latest_vlm_state: tuple[float, float, np.ndarray | None] | None = None
     latest_attention: tuple[bool, float] = (False, 0.0)
     active_controller: GazeGimbalController | None = None
+    active_tracker: GeoGazeTracker | None = None
     firefox_bridge: FirefoxDOMBridge | None = None
 
     def _on_vision_step(step: GimbalStepResult) -> None:
@@ -113,9 +116,15 @@ def run_combined_daemon(
         nonlocal active_controller
         active_controller = ctrl
 
+    def _on_tracker_ready(tracker: GeoGazeTracker) -> None:
+        nonlocal active_tracker
+        active_tracker = tracker
+
     def _on_before_click(tx: int, ty: int) -> None:
         if active_controller is not None:
             active_controller.warp_and_hold(float(tx), float(ty), hold_sec=0.25)
+        if active_tracker is not None:
+            active_tracker.record_click(float(tx), float(ty), time.monotonic())
 
     gaze_reader: SharedGazeReader | None = None
     audio_svc: UnifiedAudioService | None = None
@@ -383,6 +392,7 @@ def run_combined_daemon(
                 pointer=pointer,
                 on_step=_on_vision_step,
                 on_controller_ready=_on_controller_ready,
+                on_tracker_ready=_on_tracker_ready,
             )
         else:
             start_t = time.monotonic()

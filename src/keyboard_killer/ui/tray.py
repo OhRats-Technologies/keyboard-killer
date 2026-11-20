@@ -11,15 +11,15 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 from keyboard_killer.ui.session import SessionState
 
 
-def make_icon(background: str = "#1a1a1b", foreground: str = "#efede5") -> QIcon:
-    """Monochrome tray mark in the OhRats palette (sharp square, no brand blue)."""
+def make_icon(background: str = "#19191a", foreground: str = "#f4f2ec") -> QIcon:
+    """Crisp rounded monochrome K mark shared by the window and system tray."""
     pixmap = QPixmap(64, 64)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setBrush(QColor(background))
-    painter.setPen(QPen(QColor(foreground), 2))
-    painter.drawRect(QRect(4, 4, 56, 56))
+    painter.setPen(QPen(QColor("#3a3a3e"), 2))
+    painter.drawRoundedRect(QRect(4, 4, 56, 56), 14, 14)
     painter.setPen(QColor(foreground))
     font = painter.font()
     font.setBold(True)

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.3] - 2026-11-20
+
+- Head-movement-robust 3-D geometric gaze model (`geo_gaze.py`): casts per-camera
+  eye rays onto physical monitor planes in a reference-monitor frame `M0` with
+  head-aligned pose recovery, automatic multi-monitor placement from Linux DRM
+  EDID millimetre dimensions, single-camera stereo fallback, and an online EKF +
+  cursor-chase self-calibrator (`GeoGazeTracker`).
+- Simplified 3-view desktop shell (`Home`, `Activity`, `Settings`) with inline
+  4-step first-run onboarding (`Welcome`, `Devices`, `Calibration`, `Ready`),
+  progressive disclosure for single-camera and permission states, friendly device
+  and shortcut names, instant-apply settings, and working AI/ACP controls.
+- Added fast local `./scripts/install.sh` and `./scripts/uninstall.sh` scripts
+  for repository clones.
+
 ## [0.1.2] - 2026-11-20
 
 - Control-room shell: grouped numbered rail, top status bar, large state

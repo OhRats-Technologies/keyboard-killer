@@ -1,128 +1,160 @@
-"""Main window shell: status, navigation, setup, settings, history, diagnostics."""
+"""Main window shell: 3 calm views (Home, Activity, Settings) + inline first-run setup."""
 
 from __future__ import annotations
 
-import importlib.metadata
-import os
-import time
-from datetime import datetime, timezone
+import subprocess
+import sys
 from collections.abc import Callable
-from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QAction, QCloseEvent
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
-    QProgressBar,
     QPushButton,
     QStackedWidget,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from keyboard_killer.audio.quick_test import DEFAULT_SECONDS, SpeechTestResult, run_speech_test
 from keyboard_killer.config.paths import AppPaths, current_paths
 from keyboard_killer.config.schema import AppConfig
-from keyboard_killer.diagnostics.doctor import collect_doctor, format_text
-from keyboard_killer.platform.linux.cameras import list_cameras, resolve_camera_config
+from keyboard_killer.platform.linux.cameras import resolve_camera_config
 from keyboard_killer.platform.linux.display import get_display_layout
-from keyboard_killer.platform.linux.pipewire import pipewire_available, pipewire_note
-from keyboard_killer.ui.components import Card, eyebrow, mono, status as status_label
+from keyboard_killer.ui.components import Card, divider, eyebrow
 from keyboard_killer.ui.gaze_field import GazeField
 from keyboard_killer.ui.gaze_region import calibration_region
 from keyboard_killer.ui.history.db import HistoryStore
 from keyboard_killer.ui.history.window import HistoryPanel
 from keyboard_killer.ui.onboarding.flow import OnboardingFlow
-from keyboard_killer.ui.onboarding.steps import OnboardingWindow
+from keyboard_killer.ui.onboarding.steps import OnboardingWidget, OnboardingWindow
 from keyboard_killer.ui.screen_cursor import ScreenCursor
 from keyboard_killer.ui.session import DaemonController, NullController, SessionController, SessionState
 from keyboard_killer.ui.settings.window import SettingsPanel
 from keyboard_killer.ui.theme.tokens import ThemeName, load_bundled_fonts, stylesheet, tokens_for
 from keyboard_killer.ui.transcript_overlay import TranscriptOverlayController
-from keyboard_killer.voice.stt.factory import stt_report
-
-VERSION = "0.1.2"
+from keyboard_killer.ui.tray import make_icon
 
 
 class HomePanel(QWidget):
+    """Single calm control surface: Start/Pause, live gaze preview, quick switches, recent activity."""
+
     def __init__(self, window: "MainWindow") -> None:
         super().__init__()
         self.window = window
         self._last_state: SessionState | None = None
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(40)
+        layout.setSpacing(28)
 
+        # ---- Left column: hero state + primary controls + quick toggles
         left = QVBoxLayout()
-        left.setSpacing(12)
-        self.state_label = QLabel("STATE · OFFLINE")
-        self.state_label.setObjectName("Eyebrow")
-        left.addWidget(self.state_label)
-        self.headline = QLabel("Stopped.")
+        left.setSpacing(16)
+
+        status_row = QHBoxLayout()
+        status_row.setSpacing(8)
+        self.status_dot = QLabel("")
+        self.status_dot.setObjectName("StatusDot")
+        status_row.addWidget(self.status_dot)
+        self.state_label = QLabel("Ready")
+        self.state_label.setObjectName("Muted")
+        status_row.addWidget(self.state_label)
+        status_row.addStretch(1)
+        left.addLayout(status_row)
+
+        self.headline = QLabel("Ready to listen.")
         self.headline.setObjectName("Display")
         left.addWidget(self.headline)
-        self.detail = QLabel("Set up cameras and calibration, then start listening.")
+
+        self.detail = QLabel("Look anywhere on your screens and speak to click, scroll, or type.")
         self.detail.setObjectName("Muted")
         self.detail.setWordWrap(True)
-        self.detail.setMaximumWidth(620)
+        self.detail.setMaximumWidth(520)
         left.addWidget(self.detail)
 
         actions = QHBoxLayout()
-        self.primary = QPushButton("START LISTENING")
+        actions.setSpacing(10)
+        self.primary = QPushButton("Start listening")
         self.primary.setObjectName("Primary")
         self.primary.clicked.connect(self.toggle)
         actions.addWidget(self.primary)
-        history = QPushButton("VIEW HISTORY")
-        history.clicked.connect(lambda: window.show_page("History"))
-        actions.addWidget(history)
+
+        self.calibrate_button = QPushButton("Calibrate")
+        self.calibrate_button.clicked.connect(window.launch_calibration)
+        actions.addWidget(self.calibrate_button)
         actions.addStretch(1)
         left.addLayout(actions)
 
-        rule = QFrame()
-        rule.setObjectName("Divider")
-        left.addWidget(rule)
+        # Quick controls card (instant-apply)
+        controls = Card()
+        controls.layout.addWidget(eyebrow("Controls"))
 
-        self.last_heard = QLabel("Nothing heard yet.")
-        self.last_heard.setObjectName("Muted")
+        self.cursor_button = QPushButton("Show gaze dot")
+        self.cursor_button.setCheckable(True)
+        self.cursor_button.clicked.connect(self._toggle_cursor)
+
+        self.transcript_button = QPushButton("Show live captions")
+        self.transcript_button.setCheckable(True)
+        self.transcript_button.clicked.connect(self._toggle_transcript)
+
+        overlay_row = QHBoxLayout()
+        overlay_row.setSpacing(10)
+        overlay_row.addWidget(self.cursor_button)
+        overlay_row.addWidget(self.transcript_button)
+        overlay_row.addStretch(1)
+        controls.layout.addLayout(overlay_row)
+
+        self.cursor_note = QLabel("")
+        self.cursor_note.setObjectName("Muted")
+        self.cursor_note.setWordWrap(True)
+        self.cursor_note.setVisible(False)
+        controls.layout.addWidget(self.cursor_note)
+
+        self.transcript_note = QLabel("")
+        self.transcript_note.setObjectName("Muted")
+        self.transcript_note.setWordWrap(True)
+        self.transcript_note.setVisible(False)
+        controls.layout.addWidget(self.transcript_note)
+
+        self.eye_mouse = QCheckBox("Move mouse pointer with gaze")
+        self.eye_mouse.setChecked(window.config.gaze_cursor_control)
+        self.eye_mouse.toggled.connect(self._toggle_eye_mouse)
+        controls.layout.addWidget(self.eye_mouse)
+
+        left.addWidget(controls)
+
+        # Progressive disclosure: Recent activity card appears ONLY when there is activity
+        self.recent_card = Card(subtle=True)
+        recent_head = QHBoxLayout()
+        recent_head.addWidget(eyebrow("Recent"))
+        recent_head.addStretch(1)
+        see_all = QPushButton("View all")
+        see_all.setObjectName("Link")
+        see_all.clicked.connect(lambda: window.show_page("Activity"))
+        recent_head.addWidget(see_all)
+        self.recent_card.layout.addLayout(recent_head)
+        self.last_heard = QLabel("")
         self.last_heard.setWordWrap(True)
-        self.last_clicked = QLabel("Nothing clicked yet.")
-        self.last_clicked.setObjectName("Muted")
-        self.last_clicked.setWordWrap(True)
-        pair = QHBoxLayout()
-        for title, value in (("LAST HEARD", self.last_heard), ("LAST CLICKED", self.last_clicked)):
-            column = QVBoxLayout()
-            column.addWidget(eyebrow(title))
-            column.addWidget(value)
-            column.addStretch(1)
-            pair.addLayout(column, 1)
-        left.addLayout(pair)
+        self.recent_card.layout.addWidget(self.last_heard)
+        self.recent_card.setVisible(False)
+        left.addWidget(self.recent_card)
 
-        try_row = QHBoxLayout()
-        try_row.addWidget(eyebrow("TRY SAYING"))
-        for text in ("click send", "scroll down", "pause control"):
-            chip = QPushButton(text)
-            chip.setObjectName("Chip")
-            chip.setEnabled(False)
-            try_row.addWidget(chip)
-        try_row.addStretch(1)
-        left.addLayout(try_row)
         left.addStretch(1)
-        privacy = QLabel("CAMERA + VOICE LOCAL  ·  NOTHING LEAVES THIS MACHINE")
-        privacy.setObjectName("Eyebrow")
-        left.addWidget(privacy)
         layout.addLayout(left, 3)
 
-        instrument = Card()
-        instrument.setMaximumWidth(390)
-        instrument.layout.addWidget(eyebrow("GAZE INSTRUMENT"))
+        # ---- Right column: compact live gaze preview card (hugs content cleanly)
+        right = QVBoxLayout()
+        right.setContentsMargins(0, 0, 0, 0)
+        gaze_card = Card()
+        gaze_card.setMaximumWidth(360)
+        gaze_card.layout.addWidget(eyebrow("Gaze"))
         layout_info = window.display_layout
         self.live_region = calibration_region(window.paths.calibration_path, layout_info)
         self.gaze_field = GazeField(
@@ -130,47 +162,18 @@ class HomePanel(QWidget):
             source_size=(layout_info.total_width, layout_info.total_height),
             live_region=self.live_region,
         )
-        self.gaze_field.setMinimumHeight(175)
-        instrument.layout.addWidget(self.gaze_field)
-        self.rows = {}
-        for key, label in (
-            ("cameras", "Cameras"),
-            ("gaze", "Gaze"),
-            ("speech", "Speech model"),
-            ("latency", "Latency"),
-            ("mic", "Microphone"),
-        ):
-            row = QHBoxLayout()
-            row.addWidget(QLabel(label))
-            row.addStretch(1)
-            value = QLabel("—")
-            value.setObjectName("Mono")
-            row.addWidget(value)
-            instrument.layout.addLayout(row)
-            self.rows[key] = value
+        self.gaze_field.setFixedHeight(190)
+        gaze_card.layout.addWidget(self.gaze_field)
 
-        self.cursor_button = QPushButton("SHOW SCREEN CURSOR")
-        self.cursor_button.setCheckable(True)
-        self.cursor_button.clicked.connect(self._toggle_cursor)
-        instrument.layout.addWidget(self.cursor_button)
-        self.cursor_note = QLabel("Click-through cursor across the desktop.")
-        self.cursor_note.setObjectName("Mono")
-        self.cursor_note.setWordWrap(True)
-        instrument.layout.addWidget(self.cursor_note)
+        gaze_card.layout.addWidget(divider())
+        self.hardware_summary = QLabel("")
+        self.hardware_summary.setObjectName("Muted")
+        self.hardware_summary.setWordWrap(True)
+        gaze_card.layout.addWidget(self.hardware_summary)
+        right.addWidget(gaze_card)
+        right.addStretch(1)
+        layout.addLayout(right, 2)
 
-        self.transcript_button = QPushButton("SHOW TRANSCRIPT OVERLAY")
-        self.transcript_button.setCheckable(True)
-        self.transcript_button.clicked.connect(self._toggle_transcript)
-        instrument.layout.addWidget(self.transcript_button)
-        self.transcript_note = QLabel("Parakeet at the screen bottom.")
-        self.transcript_note.setObjectName("Mono")
-        self.transcript_note.setWordWrap(True)
-        instrument.layout.addWidget(self.transcript_note)
-
-        details = QPushButton("VIEW DETAILS")
-        details.clicked.connect(lambda: window.show_page("Diagnostics"))
-        instrument.layout.addWidget(details)
-        layout.addWidget(instrument, 2)
         self.gaze_field.mode_changed.connect(self._on_gaze_mode)
         self._cursor_timer = QTimer(self)
         self._cursor_timer.setInterval(1000)
@@ -178,84 +181,99 @@ class HomePanel(QWidget):
         self._cursor_timer.start()
         self.refresh()
 
-    def _set_state(self, state: str) -> None:
-        self.state_label.setText(f"STATE · {state.upper()}")
+    def _dot_color(self, state: SessionState) -> str:
+        tokens = self.window.theme_tokens
+        if state is SessionState.LISTENING:
+            return tokens.success
+        if state is SessionState.ERROR:
+            return tokens.warning
+        return tokens.muted
 
     def refresh(self) -> None:
         status = self.window.controller.status
+        self.status_dot.setStyleSheet(f"background: {self._dot_color(status.state)}; border-radius: 5px;")
+
         if status.state is SessionState.LISTENING:
+            self.state_label.setText("Listening")
             self.headline.setText("Listening.")
-            self.detail.setText(
-                "Gaze and voice are on. Pause stops both and releases the camera."
-            )
-            self._set_state("live")
-            self.primary.setText("PAUSE CONTROL")
+            self.detail.setText("Gaze and voice are active. Everything stays on this device.")
+            self.primary.setText("Pause")
         elif status.state is SessionState.PAUSED:
+            self.state_label.setText("Paused")
             self.headline.setText("Paused.")
-            self.detail.setText(
-                "Nothing is watching or listening. Resume when you are ready."
-            )
-            self._set_state("paused")
-            self.primary.setText("RESUME")
+            self.detail.setText("Camera and microphone are off.")
+            self.primary.setText("Resume")
         elif status.state is SessionState.ERROR:
+            self.state_label.setText("Needs attention")
             self.headline.setText("Needs attention.")
-            self.detail.setText(status.detail or "Open diagnostics for the next action.")
-            self._set_state("needs attention")
-            self.primary.setText("START LISTENING")
+            self.detail.setText(status.detail or "Open Settings → Diagnostics for details.")
+            self.primary.setText("Try again")
         else:
-            self.headline.setText("Stopped.")
+            calibrated = self.window.paths.calibration_path.exists()
+            self.state_label.setText("Ready" if calibrated else "Needs calibration")
+            self.headline.setText("Ready." if calibrated else "Calibrate to start.")
             self.detail.setText(
-                status.detail or "Set up cameras and calibration, then start listening."
+                "Start listening when you're ready."
+                if calibrated
+                else "Run a quick calibration so eye tracking knows your screen."
             )
-            self._set_state("offline")
-            self.primary.setText("START LISTENING")
+            self.primary.setText("Start listening")
 
-        recent = self.window.history.recent(2)
-        heard = next((item for item in recent if item.get("transcript")), None)
-        clicked = next((item for item in recent if item.get("target") or item.get("route")), None)
-        self.last_heard.setText(
-            f"“{heard['transcript']}”" if heard else "Nothing heard yet."
-        )
-        self.last_clicked.setText(
-            f"{clicked['target'] or clicked['route']}" if clicked else "Nothing clicked yet."
-        )
+        recent = self.window.history.recent(1)
+        if recent:
+            item = recent[0]
+            heard = str(item.get("transcript") or "").strip()
+            outcome = str(item.get("target") or item.get("result") or item.get("route") or "").strip()
+            summary = f"“{heard}” → {outcome}" if (heard and outcome) else (f"“{heard}”" if heard else outcome)
+            self.last_heard.setText(summary)
+            self.recent_card.setVisible(bool(summary))
+        else:
+            self.recent_card.setVisible(False)
 
-        from keyboard_killer.platform.linux.cameras import resolve_camera_config
-        from keyboard_killer.voice.stt.factory import stt_report
-
-        mode, cam1, cam2 = resolve_camera_config(
+        mode, _cam1, cam2 = resolve_camera_config(
             self.window.config.camera_mode,
             self.window.config.cam1_by_id,
             self.window.config.cam2_by_id,
         )
-        self.rows["cameras"].setText(f"{mode.upper()} · {'2' if cam2 else '1'}")
         calibrated = self.window.paths.calibration_path.exists()
-        if calibrated:
-            connector = self.live_region.connector
-            if connector in ("", "DEFAULT"):
-                connector = self.window.display_layout.primary.connector
-            self.rows["gaze"].setText(f"CALIBRATED · {connector}")
-        else:
-            self.rows["gaze"].setText("NOT CALIBRATED")
-        speech = stt_report(self.window.config, paths=self.window.paths)
-        self.rows["speech"].setText(
-            "READY" if speech.get("selected") == "parakeet" else "DOWNLOAD NEEDED"
-        )
-        latency = next((item["latency_ms"] for item in recent if item.get("latency_ms")), None)
-        self.rows["latency"].setText(f"{latency:.0f} MS" if latency else "—")
-        self.rows["mic"].setText("READY" if status.state is SessionState.LISTENING else "OFF")
+        cams_txt = "2 cameras" if cam2 else "1 camera"
+        mons = len(self.window.display_layout.monitors)
+        mon_txt = f"{mons} displays" if mons > 1 else "1 display"
+        cal_txt = "Calibrated" if calibrated else "Not calibrated"
+        self.hardware_summary.setText(f"{cams_txt} · {mon_txt} · {cal_txt}")
+
+        needs_calib = not self.window.paths.calibration_path.exists() and status.state is SessionState.STOPPED
+        self.primary.setObjectName("" if needs_calib else "Primary")
+        self.calibrate_button.setObjectName("Primary" if needs_calib else "")
+        for btn in (self.primary, self.calibrate_button):
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
+
+        self.eye_mouse.blockSignals(True)
+        self.eye_mouse.setChecked(self.window.config.gaze_cursor_control)
+        self.eye_mouse.blockSignals(False)
+
         self.window.primary_action = self.primary
         self._sync_cursor_controls()
         self._sync_transcript_controls()
 
+    def _toggle_eye_mouse(self, checked: bool) -> None:
+        self.window.config.gaze_cursor_control = checked
+        self.window.config.save(self.window.paths.settings_path)
+        self.window.apply_live_config_change()
+
     def _toggle_cursor(self, checked: bool) -> None:
         if checked:
+            self.live_region = calibration_region(
+                self.window.paths.calibration_path, self.window.display_layout
+            )
             status = self.window.screen_cursor.start(self.live_region)
             if not status.running:
                 self.cursor_button.blockSignals(True)
                 self.cursor_button.setChecked(False)
                 self.cursor_button.blockSignals(False)
-                self.cursor_note.setText(status.error or "Screen cursor unavailable.")
+                self.cursor_note.setText(status.error or "Gaze dot unavailable on this session.")
+                self.cursor_note.setVisible(True)
                 return
         else:
             self.window.screen_cursor.stop()
@@ -269,6 +287,7 @@ class HomePanel(QWidget):
             self.cursor_button.blockSignals(False)
         if status.error:
             self.cursor_note.setText(status.error)
+            self.cursor_note.setVisible(True)
         elif status.running:
             self._sync_cursor_controls()
         if not self.window.transcript_overlay.refresh() and self.transcript_button.isChecked():
@@ -279,18 +298,12 @@ class HomePanel(QWidget):
         self.cursor_button.blockSignals(True)
         self.cursor_button.setChecked(running)
         self.cursor_button.blockSignals(False)
-        self.cursor_button.setText("HIDE SCREEN CURSOR" if running else "SHOW SCREEN CURSOR")
-        if not running:
-            if not self.window.screen_cursor.error:
-                self.cursor_note.setText("Click-through cursor across the desktop.")
-            return
-        mode = self.gaze_field.mode
-        if mode == "live":
-            self.cursor_note.setText("ON · FOLLOWING LIVE GAZE")
-        elif mode == "no-face":
-            self.cursor_note.setText("ON · LIVE, NO FACE IN VIEW")
+        self.cursor_button.setText("Hide gaze dot" if running else "Show gaze dot")
+        if self.window.screen_cursor.error:
+            self.cursor_note.setText(self.window.screen_cursor.error)
+            self.cursor_note.setVisible(True)
         else:
-            self.cursor_note.setText("ON · DEMO PATH")
+            self.cursor_note.setVisible(False)
 
     def _on_gaze_mode(self, _mode: str) -> None:
         if self.window.screen_cursor.running:
@@ -303,9 +316,9 @@ class HomePanel(QWidget):
                 self.transcript_button.setChecked(False)
                 self.transcript_button.blockSignals(False)
                 self.transcript_note.setText(
-                    self.window.transcript_overlay.error
-                    or "Transcript overlay unavailable."
+                    self.window.transcript_overlay.error or "Live captions unavailable."
                 )
+                self.transcript_note.setVisible(True)
                 return
         else:
             self.window.transcript_overlay.stop()
@@ -318,15 +331,12 @@ class HomePanel(QWidget):
         self.transcript_button.blockSignals(True)
         self.transcript_button.setChecked(running)
         self.transcript_button.blockSignals(False)
-        self.transcript_button.setText(
-            "HIDE TRANSCRIPT" if running else "SHOW TRANSCRIPT"
-        )
-        if running:
-            self.transcript_note.setText("ON · WAITING FOR SPEECH")
-        elif self.window.transcript_overlay.error:
+        self.transcript_button.setText("Hide live captions" if running else "Show live captions")
+        if self.window.transcript_overlay.error and not running:
             self.transcript_note.setText(self.window.transcript_overlay.error)
+            self.transcript_note.setVisible(True)
         else:
-            self.transcript_note.setText("Parakeet at the screen bottom.")
+            self.transcript_note.setVisible(False)
 
     def poll_state(self) -> None:
         state = self.window.controller.status.state
@@ -351,498 +361,10 @@ class HomePanel(QWidget):
         self.poll_state()
 
 
-class SetupPanel(QWidget):
-    def __init__(self, window: "MainWindow") -> None:
-        super().__init__()
-        self.window = window
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        title = QLabel("Setup")
-        title.setObjectName("Heading")
-        layout.addWidget(title)
-        card = Card()
-        self.body = QLabel("")
-        self.body.setWordWrap(True)
-        self.body.setObjectName("Muted")
-        card.layout.addWidget(self.body)
-        action = QPushButton("OPEN SETUP")
-        action.setObjectName("Primary")
-        action.clicked.connect(window.open_onboarding)
-        card.layout.addWidget(action, 0, Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(card)
-        layout.addStretch(1)
-        self.refresh()
-
-    def refresh(self) -> None:
-        if self.window.flow.is_complete:
-            self.body.setText(
-                "Setup is complete. Review permissions, cameras, calibration, and the speech model."
-            )
-        else:
-            self.body.setText(
-                "About 10 minutes. Permissions, one or two cameras, calibration, the speech model, "
-                "an optional AI provider, and one practice click. Your progress is saved."
-            )
-
-
-class CamerasPanel(QWidget):
-    def __init__(self, window: MainWindow) -> None:
-        super().__init__()
-        self.window = window
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        head = QHBoxLayout()
-        title = QLabel("Cameras")
-        title.setObjectName("Heading")
-        head.addWidget(title)
-        head.addStretch(1)
-        setup = QPushButton("OPEN SETUP")
-        setup.clicked.connect(window.open_onboarding)
-        head.addWidget(setup)
-        layout.addLayout(head)
-        self.card = Card()
-        layout.addWidget(self.card)
-        self.body = QLabel("")
-        self.body.setWordWrap(True)
-        self.card.layout.addWidget(self.body)
-
-        sharing = Card()
-        sharing.layout.addWidget(eyebrow("CAMERA SHARING"))
-        self.share_body = QLabel("")
-        self.share_body.setObjectName("Muted")
-        self.share_body.setWordWrap(True)
-        sharing.layout.addWidget(self.share_body)
-        self.share_button = QPushButton("SHARE CAMERA WITH OTHER APPS")
-        self.share_button.setCheckable(True)
-        self.share_button.clicked.connect(self._toggle_sharing)
-        sharing.layout.addWidget(self.share_button, 0, Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(sharing)
-        layout.addStretch(1)
-        self.refresh()
-
-    def refresh(self) -> None:
-        try:
-            cameras = list_cameras()
-        except Exception as exc:
-            self.body.setText(f"Could not list cameras: {exc}")
-            return
-        mode, cam1, cam2 = resolve_camera_config(
-            self.window.config.camera_mode,
-            self.window.config.cam1_by_id,
-            self.window.config.cam2_by_id,
-        )
-        lines = [f"MODE  {mode.upper()}", ""]
-        lines += [f"{camera.name}\n  {camera.path}" for camera in cameras] or ["No stable cameras found."]
-        lines += ["", f"Camera 1  {cam1 or 'not set'}", f"Camera 2  {cam2 or 'not used in mono mode'}"]
-        self.body.setText("\n".join(lines))
-
-        available = pipewire_available()
-        shared = self.window.config.camera_backend == "pipewire"
-        usable = available and mode == "mono"
-        self.share_button.blockSignals(True)
-        self.share_button.setChecked(shared)
-        self.share_button.blockSignals(False)
-        self.share_button.setEnabled(usable)
-        self.share_button.setText(
-            "PIPEWIRE SHARING ON" if shared else "SHARE CAMERA WITH OTHER APPS"
-        )
-        if not available:
-            self.share_body.setText(pipewire_note())
-        elif mode != "mono":
-            self.share_body.setText(
-                "Sharing uses the PipeWire default source and is available in mono mode. "
-                "Switch camera mode to mono, or keep V4L2 for stereo."
-            )
-        elif shared:
-            self.share_body.setText(
-                "PipeWire sharing is on. The app no longer holds /dev/videoN, so other "
-                "camera clients can request it through the portal. The portal provides "
-                "640x480 and exposure locks are unavailable; check that your eyes are "
-                "inside the frame and recalibrate in this mode for the best accuracy."
-            )
-        else:
-            self.share_body.setText(
-                "The V4L2 backend owns the camera exclusively. Turn on sharing to capture "
-                "through PipeWire so other camera clients can request it through the portal. "
-                "Mono only; 640x480; no manual exposure."
-            )
-
-    def _toggle_sharing(self, checked: bool) -> None:
-        self.window.config.camera_backend = "pipewire" if checked else "v4l2"
-        self.window.config.save(self.window.paths.settings_path)
-        if self.window.controller.status.state is SessionState.LISTENING:
-            self.window.controller.pause()
-            self.window.controller.start()
-            self.window.home.poll_state()
-        self.refresh()
-
-
-class CalibrationPanel(QWidget):
-    def __init__(self, window: MainWindow) -> None:
-        super().__init__()
-        self.window = window
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        head = QHBoxLayout()
-        title = QLabel("Calibration")
-        title.setObjectName("Heading")
-        head.addWidget(title)
-        head.addStretch(1)
-        setup = QPushButton("OPEN SETUP")
-        setup.clicked.connect(window.open_onboarding)
-        head.addWidget(setup)
-        layout.addLayout(head)
-        card = Card()
-        self.status = QLabel("")
-        self.status.setObjectName("Muted")
-        card.layout.addWidget(eyebrow("STATUS"))
-        card.layout.addWidget(self.status)
-        self.detail = QLabel(
-            "Calibration teaches the gaze model your screen and posture. "
-            "It opens a full-screen target window."
-        )
-        self.detail.setObjectName("Muted")
-        self.detail.setWordWrap(True)
-        card.layout.addWidget(self.detail)
-        self.advanced = QLabel("")
-        self.advanced.setObjectName("Mono")
-        self.advanced.setWordWrap(True)
-        card.layout.addWidget(self.advanced)
-        layout.addWidget(card)
-        layout.addStretch(1)
-        self.refresh()
-
-    def refresh(self) -> None:
-        path = self.window.paths.calibration_path
-        ready = path.exists()
-        self.status.setText("READY" if ready else "NOT CALIBRATED")
-        self.status.setObjectName("Success" if ready else "Warning")
-        self.detail.setText(
-            "Calibration is ready. Re-run it after moving the cameras or monitor."
-            if ready
-            else "Run the guided full-screen calibration before starting vision."
-        )
-        self.advanced.setText(f"FILE  {path}")
-        self.advanced.setVisible(False)
-
-
-class SpeechTestWorker(QThread):
-    """Load Parakeet and transcribe one microphone clip off the UI thread."""
-
-    stage = Signal(str)
-    done = Signal(object)
-    failed = Signal(str)
-
-    def __init__(self, window: "MainWindow") -> None:
-        super().__init__(window)
-        self.window = window
-
-    def run(self) -> None:
-        try:
-            result = run_speech_test(
-                self.window.config,
-                paths=self.window.paths,
-                seconds=DEFAULT_SECONDS,
-                on_stage=self.stage.emit,
-            )
-            self.done.emit(result)
-        except Exception as exc:
-            self.failed.emit(str(exc))
-
-
-class ModelsPanel(QWidget):
-    def __init__(self, window: MainWindow) -> None:
-        super().__init__()
-        self.window = window
-        self._worker: SpeechTestWorker | None = None
-        self._record_started = 0.0
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        head = QHBoxLayout()
-        title = QLabel("Models")
-        title.setObjectName("Heading")
-        head.addWidget(title)
-        head.addStretch(1)
-        setup = QPushButton("OPEN SETUP")
-        setup.clicked.connect(window.open_onboarding)
-        head.addWidget(setup)
-        layout.addLayout(head)
-        card = Card()
-        card.layout.addWidget(eyebrow("SPEECH"))
-        name = QLabel("Parakeet TDT 0.6B v2")
-        name.setObjectName("Heading")
-        card.layout.addWidget(name)
-        self.status = QLabel("")
-        self.status.setObjectName("Muted")
-        card.layout.addWidget(self.status)
-        desc = QLabel("English · ONNX int8 · CPU by default · about 630 MB")
-        desc.setObjectName("Muted")
-        card.layout.addWidget(desc)
-        self.path = QLabel("")
-        self.path.setObjectName("Mono")
-        self.path.setWordWrap(True)
-        card.layout.addWidget(self.path)
-        layout.addWidget(card)
-
-        test = Card()
-        test.layout.addWidget(eyebrow("LIVE SPEECH TEST"))
-        test_title = QLabel("Say something. Read the transcript.")
-        test_title.setObjectName("Heading")
-        test.layout.addWidget(test_title)
-        test_copy = QLabel(
-            "Records four seconds from the microphone selected in Settings and runs the "
-            "app-owned Parakeet model on this device. Voice commands start with click, "
-            "scroll, type, press, tap, or move to."
-        )
-        test_copy.setObjectName("Muted")
-        test_copy.setWordWrap(True)
-        test.layout.addWidget(test_copy)
-        self.test_status = QLabel("READY · LOCAL PARAKEET")
-        self.test_status.setObjectName("Mono")
-        test.layout.addWidget(self.test_status)
-        self.test_progress = QProgressBar()
-        self.test_progress.setRange(0, 100)
-        self.test_progress.setVisible(False)
-        test.layout.addWidget(self.test_progress)
-        self.test_transcript = QLabel("—")
-        self.test_transcript.setObjectName("Heading")
-        self.test_transcript.setWordWrap(True)
-        test.layout.addWidget(self.test_transcript)
-        self.test_detail = QLabel("")
-        self.test_detail.setObjectName("Mono")
-        self.test_detail.setWordWrap(True)
-        test.layout.addWidget(self.test_detail)
-        self.test_button = QPushButton("RECORD 4 SECONDS")
-        self.test_button.setObjectName("Primary")
-        self.test_button.clicked.connect(self.start_test)
-        test.layout.addWidget(self.test_button, 0, Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(test)
-        layout.addStretch(1)
-
-        self._progress_timer = QTimer(self)
-        self._progress_timer.setInterval(100)
-        self._progress_timer.timeout.connect(self._tick_progress)
-        self.refresh()
-
-    def refresh(self) -> None:
-        report = stt_report(self.window.config, paths=self.window.paths)
-        parakeet = report.get("parakeet", {})
-        ready = report.get("selected") == "parakeet"
-        self.status.setText("READY" if ready else "DOWNLOAD NEEDED")
-        self.status.setObjectName("Success" if ready else "Warning")
-        self.path.setText(f"FILE  {parakeet.get('path', '')}")
-        idle = self._worker is None or not self._worker.isRunning()
-        if not ready and idle:
-            self.test_status.setText("SPEECH MODEL MISSING · OPEN SETUP TO DOWNLOAD")
-            self.test_button.setEnabled(False)
-        elif idle:
-            self.test_button.setEnabled(True)
-
-    def start_test(self) -> None:
-        if self._worker is not None and self._worker.isRunning():
-            return
-        report = stt_report(self.window.config, paths=self.window.paths)
-        if report.get("selected") != "parakeet":
-            self.test_status.setText("SPEECH MODEL MISSING · OPEN SETUP TO DOWNLOAD")
-            return
-        self.test_transcript.setText("—")
-        self.test_detail.setText("")
-        self.test_progress.setVisible(True)
-        self.test_progress.setRange(0, 0)
-        self.test_button.setEnabled(False)
-        self.test_button.setText("TEST RUNNING")
-        self.test_status.setObjectName("Mono")
-        self.test_status.style().unpolish(self.test_status)
-        self.test_status.style().polish(self.test_status)
-        worker = SpeechTestWorker(self.window)
-        worker.stage.connect(self._on_stage)
-        worker.done.connect(self._on_done)
-        worker.failed.connect(self._on_failed)
-        self._worker = worker
-        worker.start()
-
-    def _on_stage(self, stage: str) -> None:
-        if stage == "loading":
-            self.test_status.setText("LOADING PARAKEET…")
-            self.test_progress.setRange(0, 0)
-        elif stage == "recording":
-            self._record_started = time.monotonic()
-            self.test_status.setText("RECORDING · SPEAK NOW")
-            self.test_progress.setRange(0, 100)
-            self.test_progress.setValue(0)
-            self._progress_timer.start()
-        elif stage == "transcribing":
-            self._progress_timer.stop()
-            self.test_progress.setRange(0, 0)
-            self.test_status.setText("TRANSCRIBING…")
-
-    def _tick_progress(self) -> None:
-        import time
-
-        elapsed = time.monotonic() - self._record_started
-        remaining = max(0.0, DEFAULT_SECONDS - elapsed)
-        self.test_progress.setValue(
-            min(100, int(100 * elapsed / max(0.1, DEFAULT_SECONDS)))
-        )
-        self.test_status.setText(f"RECORDING · {remaining:.1f}S LEFT")
-
-    def _on_done(self, result: SpeechTestResult) -> None:
-        self._progress_timer.stop()
-        self.test_progress.setVisible(False)
-        self.test_button.setEnabled(True)
-        self.test_button.setText("TEST AGAIN")
-        self.test_status.setText(
-            "HEARD · LOCAL PARAKEET" if result.has_speech else "NO SPEECH DETECTED"
-        )
-        self.test_status.setObjectName("Success" if result.has_speech else "Warning")
-        self.test_status.style().unpolish(self.test_status)
-        self.test_status.style().polish(self.test_status)
-        self.test_transcript.setText(
-            f"“{result.transcript}”" if result.transcript else "No words recognized."
-        )
-        self.test_detail.setText(
-            f"{result.latency_ms:.0f} MS · {result.recorded_s:.1f}S · "
-            f"PEAK {result.peak:.3f} · {result.engine} · {result.sample_rate} HZ"
-        )
-
-    def _on_failed(self, message: str) -> None:
-        self._progress_timer.stop()
-        self.test_progress.setVisible(False)
-        self.test_button.setEnabled(True)
-        self.test_button.setText("TRY AGAIN")
-        self.test_status.setText("TEST FAILED")
-        self.test_status.setObjectName("Warning")
-        self.test_status.style().unpolish(self.test_status)
-        self.test_status.style().polish(self.test_status)
-        self.test_transcript.setText("—")
-        self.test_detail.setText(message)
-
-    def stop_test(self) -> None:
-        self._progress_timer.stop()
-        if self._worker is not None and self._worker.isRunning():
-            self._worker.wait(8000)
-
-
-class DiagnosticsPanel(QWidget):
-    def __init__(self) -> None:
-        super().__init__()
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        header = QHBoxLayout()
-        title = QLabel("Diagnostics")
-        title.setObjectName("Heading")
-        header.addWidget(title)
-        header.addStretch(1)
-        refresh = QPushButton("REFRESH")
-        refresh.clicked.connect(self.refresh)
-        header.addWidget(refresh)
-        layout.addLayout(header)
-        subtitle = QLabel("The same report used by setup and the tray.")
-        subtitle.setObjectName("Muted")
-        layout.addWidget(subtitle)
-
-        summary = Card()
-        grid = QGridLayout()
-        self.badges: dict[str, QLabel] = {}
-        for row, (key, label) in enumerate(
-            (
-                ("input", "Input"),
-                ("cameras", "Cameras"),
-                ("screen", "Screen"),
-                ("speech", "Speech"),
-                ("ai", "AI provider"),
-                ("overlay", "Overlay"),
-            )
-        ):
-            name = QLabel(label)
-            value = QLabel("CHECKING")
-            value.setObjectName("Muted")
-            grid.addWidget(name, row, 0)
-            grid.addWidget(value, row, 1)
-            self.badges[key] = value
-        grid.setColumnStretch(1, 1)
-        summary.layout.addLayout(grid)
-        layout.addWidget(summary)
-
-        detail_label = eyebrow("TECHNICAL DETAIL")
-        layout.addWidget(detail_label)
-        self.text = QTextEdit()
-        self.text.setReadOnly(True)
-        layout.addWidget(self.text, 1)
-        self.refresh()
-
-    @staticmethod
-    def _set_badge(label: QLabel, text: str, ok: bool | None) -> None:
-        label.setText(text.upper())
-        label.setObjectName("Success" if ok is True else "Warning" if ok is False else "Muted")
-        label.style().unpolish(label)
-        label.style().polish(label)
-
-    def refresh(self) -> None:
-        try:
-            report = collect_doctor(check_providers=False)
-            caps = report.capabilities.get("capabilities", {})
-            self._set_badge(
-                self.badges["input"],
-                caps.get("pointer", {}).get("status", "unknown"),
-                caps.get("pointer", {}).get("status") == "available",
-            )
-            cameras = report.cameras.get("mode", "unknown")
-            self._set_badge(self.badges["cameras"], cameras, cameras in ("mono", "stereo"))
-            self._set_badge(
-                self.badges["screen"],
-                caps.get("screen_capture", {}).get("status", "unknown"),
-                caps.get("screen_capture", {}).get("status") == "available",
-            )
-            self._set_badge(
-                self.badges["speech"],
-                report.stt.get("selected", "missing"),
-                report.stt.get("selected") == "parakeet",
-            )
-            text_status = report.providers.get("text_llm", {}).get("status", {}).get("state", "not checked")
-            self._set_badge(self.badges["ai"], text_status, text_status == "ready")
-            self._set_badge(
-                self.badges["overlay"],
-                caps.get("overlay", {}).get("status", "unknown"),
-                caps.get("overlay", {}).get("status") == "available",
-            )
-            self.text.setPlainText(format_text(report))
-        except Exception as exc:
-            self.text.setPlainText(f"Diagnostics failed: {exc}")
-
-
-class AboutPanel(QWidget):
-    def __init__(self) -> None:
-        super().__init__()
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        title = QLabel("About")
-        title.setObjectName("Heading")
-        layout.addWidget(title)
-        text = QLabel(
-            f"Keyboard-Killer {VERSION}\n\n"
-            "One- or two-camera gaze, pop-click, and voice control.\n"
-            "Speech: NVIDIA Parakeet TDT 0.6B v2 (CC-BY-4.0), ONNX export by istupakov.\n"
-            "Camera and speech processing stay on this device. Optional AI providers are chosen by you.\n\n"
-            "Type: Inter and Space Mono (SIL Open Font License)."
-        )
-        text.setWordWrap(True)
-        layout.addWidget(text)
-        layout.addStretch(1)
-
-
 class MainWindow(QMainWindow):
-    PAGES = (
-        "Home",
-        "Setup",
-        "Cameras",
-        "Calibration",
-        "Models",
-        "History",
-        "Diagnostics",
-        "Settings",
-        "About",
-    )
+    """Single-window app shell: 3 calm views + inline first-run setup."""
+
+    PAGES = ("Home", "Activity", "Settings")
 
     def __init__(
         self,
@@ -869,98 +391,102 @@ class MainWindow(QMainWindow):
         self.tray = None
         self.overlay = None
         self._flow_window: OnboardingWindow | None = None
+        self._inline_setup: OnboardingWidget | None = None
+        self._calib_proc: subprocess.Popen[bytes] | None = None
         self._display_layout = None
         self._shutdown = False
 
         self.setWindowTitle("Keyboard-Killer")
-        self.resize(1120, 720)
-        self.setMinimumSize(960, 600)
+        self.setWindowIcon(make_icon())
+        self.resize(980, 640)
+        self.setMinimumSize(820, 540)
 
-        central = QWidget()
-        row = QHBoxLayout(central)
+        load_bundled_fonts()
+        self.theme_tokens = tokens_for(theme or ThemeName.LIGHT)
+
+        # Root stack switches cleanly between the main 3-tab shell and inline first-run setup
+        self.root_stack = QStackedWidget()
+        self.setCentralWidget(self.root_stack)
+
+        # ---- Main Shell (Index 0)
+        shell = QWidget()
+        row = QHBoxLayout(shell)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
+
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(224)
+        sidebar.setFixedWidth(196)
         side_layout = QVBoxLayout(sidebar)
-        side_layout.setContentsMargins(12, 16, 12, 16)
-        wordmark = QLabel("KEYBOARD-KILLER")
+        side_layout.setContentsMargins(14, 20, 14, 16)
+        side_layout.setSpacing(12)
+
+        brand = QHBoxLayout()
+        brand.setSpacing(8)
+        wordmark = QLabel("Keyboard-Killer")
         wordmark.setObjectName("Wordmark")
-        side_layout.addWidget(wordmark)
-        tagline = QLabel("GAZE + VOICE")
-        tagline.setObjectName("Eyebrow")
-        side_layout.addWidget(tagline)
-        side_layout.addSpacing(16)
+        brand.addWidget(wordmark)
+        brand.addStretch(1)
+        side_layout.addLayout(brand)
+
         self.nav = QListWidget()
         self.nav.setObjectName("Nav")
         self.nav_rows: dict[str, int] = {}
-        self._build_nav()
-        self.nav.setCurrentRow(self.nav_rows["Home"])
+        for page in self.PAGES:
+            item = QListWidgetItem(page)
+            item.setData(Qt.ItemDataRole.UserRole, page)
+            self.nav.addItem(item)
+            self.nav_rows[page] = self.nav.count() - 1
+        self.nav.setCurrentRow(0)
         self.nav.currentRowChanged.connect(self._select)
         side_layout.addWidget(self.nav, 1)
-        footer = QLabel("LOCAL ONLY  ·  NO ACCOUNT")
-        footer.setObjectName("Eyebrow")
-        side_layout.addWidget(footer)
+
+        self.theme_button = QPushButton("Dark mode")
+        self.theme_button.setObjectName("Ghost")
+        self.theme_button.clicked.connect(self.toggle_theme)
+        side_layout.addWidget(self.theme_button, 0, Qt.AlignmentFlag.AlignLeft)
         row.addWidget(sidebar)
 
         content = QWidget()
         content.setObjectName("Content")
-        self.stack = QStackedWidget()
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        topbar = QFrame()
-        topbar.setObjectName("TopBar")
-        topbar_layout = QHBoxLayout(topbar)
-        topbar_layout.setContentsMargins(28, 10, 28, 10)
-        self.breadcrumb = QLabel("KEYBOARD-KILLER — HOME")
-        self.breadcrumb.setObjectName("Breadcrumb")
-        topbar_layout.addWidget(self.breadcrumb)
-        topbar_layout.addStretch(1)
-        self.top_last = QLabel("")
-        self.top_last.setObjectName("Breadcrumb")
-        topbar_layout.addWidget(self.top_last)
-        self.theme_button = QPushButton("DARK")
-        self.theme_button.setObjectName("Chip")
-        self.theme_button.clicked.connect(self.toggle_theme)
-        topbar_layout.addWidget(self.theme_button)
-        self.status_chip = QLabel("STOPPED")
-        self.status_chip.setObjectName("Pill")
-        topbar_layout.addWidget(self.status_chip)
-        content_layout.addWidget(topbar)
-        page_host = QWidget()
-        page_layout = QVBoxLayout(page_host)
-        page_layout.setContentsMargins(28, 24, 28, 24)
-        page_layout.addWidget(self.stack)
-        content_layout.addWidget(page_host, 1)
+        content_layout.setContentsMargins(32, 28, 32, 24)
+        self.stack = QStackedWidget()
+        content_layout.addWidget(self.stack, 1)
         row.addWidget(content, 1)
-        self.setCentralWidget(central)
 
         self.home = HomePanel(self)
+        self.activity = HistoryPanel(self.history)
+        self.settings = SettingsPanel(
+            self.config,
+            self.paths,
+            on_config_changed=self.apply_live_config_change,
+            on_calibrate=self.launch_calibration,
+            on_run_setup=self.show_inline_setup,
+        )
         self.pages: dict[str, QWidget] = {
             "Home": self.home,
-            "Setup": SetupPanel(self),
-            "Cameras": CamerasPanel(self),
-            "Calibration": CalibrationPanel(self),
-            "Models": ModelsPanel(self),
-            "Settings": SettingsPanel(self.config, self.paths),
-            "History": HistoryPanel(self.history),
-            "Diagnostics": DiagnosticsPanel(),
-            "About": AboutPanel(),
+            "Activity": self.activity,
+            "Settings": self.settings,
         }
         for name in self.PAGES:
             self.stack.addWidget(self.pages[name])
 
-        self.statusBar().showMessage("READY")
-        load_bundled_fonts()
-        self.set_theme(theme or ThemeName.LIGHT)
+        self.root_stack.addWidget(shell)
+
+        self.set_theme(self.theme_tokens.name)
         self.refresh_tray()
         if self.config.transcript_overlay:
             self.transcript_overlay.start()
+
         self._status_timer = QTimer(self)
         self._status_timer.setInterval(1000)
         self._status_timer.timeout.connect(self.home.poll_state)
         self._status_timer.start()
+
+        self._calib_timer = QTimer(self)
+        self._calib_timer.setInterval(500)
+        self._calib_timer.timeout.connect(self._poll_calibration)
 
     @property
     def display_layout(self):
@@ -968,76 +494,77 @@ class MainWindow(QMainWindow):
             self._display_layout = get_display_layout()
         return self._display_layout
 
-    def shutdown(self) -> None:
-        if self._shutdown:
+    def apply_live_config_change(self) -> None:
+        self.config = AppConfig.load(self.paths.settings_path)
+        self.home.refresh()
+        if self.controller.status.state is SessionState.LISTENING:
+            self.controller.pause()
+            self.controller.start()
+            self.home.poll_state()
+
+    def launch_calibration(self) -> None:
+        if self._calib_proc is not None and self._calib_proc.poll() is None:
             return
-        self._shutdown = True
-        if hasattr(self, "_status_timer"):
-            self._status_timer.stop()
-        models = getattr(self, "pages", {}).get("Models")
-        if models is not None:
-            models.stop_test()
-        settings = getattr(self, "pages", {}).get("Settings")
-        if settings is not None:
-            settings.stop()
-        self.home.shutdown()
-        self.transcript_overlay.stop()
-        self.controller.quit()
-
-    def _build_nav(self) -> None:
-        groups = (
-            ("CONTROL", ("Home", "Setup", "Cameras", "Calibration", "Models")),
-            ("RECORD", ("History", "Diagnostics")),
-            ("SYSTEM", ("Settings", "About")),
-        )
-        number = 0
-        for heading, entries in groups:
-            header = QListWidgetItem(heading)
-            header.setFlags(Qt.ItemFlag.NoItemFlags)
-            self.nav.addItem(header)
-            for page in entries:
-                number += 1
-                item = QListWidgetItem(f"{number:02d}  {page}")
-                item.setData(Qt.ItemDataRole.UserRole, page)
-                self.nav.addItem(item)
-                self.nav_rows[page] = self.nav.count() - 1
-
-    def set_theme(self, theme: ThemeName | str) -> None:
-        self.theme_tokens = tokens_for(theme)
-        app = QApplication.instance()
-        if app is not None:
-            app.setStyleSheet(stylesheet(self.theme_tokens))
-        else:
-            self.setStyleSheet(stylesheet(self.theme_tokens))
-        if hasattr(self, "theme_button"):
-            self.theme_button.setText(
-                "LIGHT" if self.theme_tokens.name is ThemeName.DARK else "DARK"
+        was_listening = self.controller.status.state is SessionState.LISTENING
+        if was_listening:
+            self.controller.pause()
+        self._resume_after_calib = was_listening
+        try:
+            self._calib_proc = subprocess.Popen(
+                [sys.executable, "-m", "keyboard_killer.main", "calibrate"]
             )
+            self._calib_timer.start()
+        except OSError:
+            self._calib_proc = None
 
-    def toggle_theme(self) -> None:
-        self.set_theme(
-            ThemeName.LIGHT
-            if self.theme_tokens.name is ThemeName.DARK
-            else ThemeName.DARK
+    def _poll_calibration(self) -> None:
+        if self._calib_proc is None or self._calib_proc.poll() is not None:
+            self._calib_timer.stop()
+            self._calib_proc = None
+            self.home.live_region = calibration_region(
+                self.paths.calibration_path, self.display_layout
+            )
+            self.home.refresh()
+            self.settings.refresh()
+            if getattr(self, "_resume_after_calib", False):
+                self._resume_after_calib = False
+                self.controller.start()
+                self.home.poll_state()
+
+    def show_inline_setup(self) -> OnboardingWidget:
+        """Show the distraction-free setup flow inline inside this single window."""
+        if self._inline_setup is not None:
+            self.root_stack.removeWidget(self._inline_setup)
+            self._inline_setup.close_resources()
+            self._inline_setup.deleteLater()
+        if self.flow.is_complete:
+            self.flow.reset()
+        widget = OnboardingWidget(
+            flow=self.flow,
+            config=self.config,
+            paths=self.paths,
+            report_provider=self.report_provider,
+            enable_previews=self.enable_previews,
+            parent=self,
         )
+        widget.completed.connect(self._on_inline_setup_complete)
+        self._inline_setup = widget
+        self.root_stack.addWidget(widget)
+        self.root_stack.setCurrentWidget(widget)
+        return widget
 
-    def _select(self, index: int) -> None:
-        item = self.nav.item(index)
-        name = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
-        if name in self.pages:
-            page = self.pages[name]
-            self.stack.setCurrentWidget(page)
-            self.breadcrumb.setText(f"KEYBOARD-KILLER — {str(name).upper()}")
-            refresh = getattr(page, "refresh", None)
-            if callable(refresh):
-                refresh()
-
-    def show_page(self, name: str) -> None:
-        if name in self.pages:
-            self.nav.setCurrentRow(self.nav_rows.get(name, 0))
-            self._select(self.nav_rows.get(name, 0))
+    def _on_inline_setup_complete(self) -> None:
+        self.config = AppConfig.load(self.paths.settings_path)
+        self.root_stack.setCurrentIndex(0)
+        self.show_page("Home")
+        self.settings.refresh()
+        self.home.refresh()
+        if self.paths.calibration_path.exists() and self.controller.status.state is not SessionState.LISTENING:
+            self.controller.start()
+            self.home.poll_state()
 
     def open_onboarding(self) -> OnboardingWindow:
+        """Open setup in a standalone dialog (kept for external callers/tests)."""
         window = OnboardingWindow(
             flow=self.flow,
             config=self.config,
@@ -1053,30 +580,67 @@ class MainWindow(QMainWindow):
     def _onboarding_finished(self, _result: int) -> None:
         self.config = AppConfig.load(self.paths.settings_path)
         self.show_page("Home")
+        self.settings.refresh()
         self.home.refresh()
         self.flow = self._flow_window.flow if self._flow_window else self.flow
 
-    def refresh_tray(self) -> None:
-        status = self.controller.status
-        label = {
-            SessionState.STOPPED: "STOPPED",
-            SessionState.LISTENING: "LISTENING",
-            SessionState.PAUSED: "PAUSED",
-            SessionState.ERROR: "NEEDS ATTENTION",
-        }.get(status.state, status.state.value.upper())
-        self.status_chip.setText(label)
-        recent = self.history.recent(1)
-        if recent:
-            try:
-                created = datetime.fromisoformat(str(recent[0]["created_at"]))
-                age = max(0, int((datetime.now(timezone.utc) - created).total_seconds()))
-                self.top_last.setText(f"LAST ACTION {age}s AGO")
-            except (TypeError, ValueError):
-                self.top_last.setText("LAST ACTION RECORDED")
+    def set_theme(self, theme: ThemeName | str) -> None:
+        self.theme_tokens = tokens_for(theme)
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(stylesheet(self.theme_tokens))
         else:
-            self.top_last.setText("")
+            self.setStyleSheet(stylesheet(self.theme_tokens))
+        if hasattr(self, "theme_button"):
+            self.theme_button.setText(
+                "Light mode" if self.theme_tokens.name is ThemeName.DARK else "Dark mode"
+            )
+        if hasattr(self, "home"):
+            self.home.refresh()
+
+    def toggle_theme(self) -> None:
+        self.set_theme(
+            ThemeName.LIGHT
+            if self.theme_tokens.name is ThemeName.DARK
+            else ThemeName.DARK
+        )
+
+    def _select(self, index: int) -> None:
+        item = self.nav.item(index)
+        name = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if name in self.pages:
+            page = self.pages[name]
+            self.stack.setCurrentWidget(page)
+            refresh = getattr(page, "refresh", None)
+            if callable(refresh):
+                refresh()
+
+    def show_page(self, name: str) -> None:
+        # Backwards-compatible alias for older callers referencing "History"
+        target = "Activity" if name == "History" else name
+        if target in self.pages:
+            self.root_stack.setCurrentIndex(0)
+            row = self.nav_rows.get(target, 0)
+            self.nav.setCurrentRow(row)
+            self._select(row)
+
+    def refresh_tray(self) -> None:
         if self.tray is not None:
+            status = self.controller.status
             self.tray.set_state(status.state, status.detail)
+
+    def shutdown(self) -> None:
+        if self._shutdown:
+            return
+        self._shutdown = True
+        self._status_timer.stop()
+        self._calib_timer.stop()
+        if self._inline_setup is not None:
+            self._inline_setup.close_resources()
+        self.settings.stop()
+        self.home.shutdown()
+        self.transcript_overlay.stop()
+        self.controller.quit()
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         if self.tray is not None and self.tray.available():
@@ -1103,6 +667,7 @@ def run_ui(
     load_bundled_fonts()
     app.setApplicationName("Keyboard-Killer")
     app.setApplicationDisplayName("Keyboard-Killer")
+    app.setWindowIcon(make_icon())
     resolved_theme = theme or system_theme_name(app)
     window = MainWindow(
         paths=paths,
@@ -1117,13 +682,13 @@ def run_ui(
         on_open=window.show,
         on_pause=window.home.toggle,
         on_quit=app.quit,
-        on_calibrate=window.open_onboarding,
+        on_calibrate=window.launch_calibration,
     )
     if tray.start():
         window.tray = tray
     window.overlay = create_overlay(tray=tray.icon, env=None)
-    window.show()
-    # First launch is a guided story, not a cold dashboard.
+    # First launch embeds setup directly in the same window — never stacks two windows!
     if not window.flow.is_complete:
-        window.open_onboarding()
+        window.show_inline_setup()
+    window.show()
     return app.exec()

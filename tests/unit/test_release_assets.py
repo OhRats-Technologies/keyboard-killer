@@ -126,3 +126,41 @@ def test_installer_rejects_bad_checksum(tmp_path: Path) -> None:
     assert result.returncode != 0
     assert "checksum mismatch" in result.stderr
     assert not (tmp_path / "app" / "Keyboard-Killer.AppImage").exists()
+
+
+def test_local_install_and_uninstall_scripts(tmp_path: Path) -> None:
+    fake_venv = tmp_path / "venv"
+    (fake_venv / "bin").mkdir(parents=True)
+    fake_py = fake_venv / "bin" / "python"
+    fake_py.write_text("#!/bin/sh\nexit 0\n")
+    fake_py.chmod(0o755)
+
+    env = {
+        **os.environ,
+        "KEYBOARD_KILLER_BIN_DIR": str(tmp_path / "bin"),
+        "XDG_DATA_HOME": str(tmp_path / "share"),
+        "XDG_CONFIG_HOME": str(tmp_path / "config"),
+        "XDG_CACHE_HOME": str(tmp_path / "cache"),
+        "KEYBOARD_KILLER_VENV_DIR": str(fake_venv),
+    }
+    res_in = subprocess.run(
+        ["sh", str(ROOT / "scripts" / "install.sh"), "--skip-sync"],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert res_in.returncode == 0, res_in.stderr
+    assert (tmp_path / "bin" / "keyboard-killer").exists()
+    assert (tmp_path / "share" / "applications" / "keyboard-killer.desktop").exists()
+    assert (tmp_path / "share" / "icons" / "hicolor" / "scalable" / "apps" / "keyboard-killer.svg").exists()
+
+    res_out = subprocess.run(
+        ["sh", str(ROOT / "scripts" / "uninstall.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert res_out.returncode == 0, res_out.stderr
+    assert not (tmp_path / "bin" / "keyboard-killer").exists()
+    assert not (tmp_path / "share" / "applications" / "keyboard-killer.desktop").exists()
+    assert not (tmp_path / "share" / "icons" / "hicolor" / "scalable" / "apps" / "keyboard-killer.svg").exists()

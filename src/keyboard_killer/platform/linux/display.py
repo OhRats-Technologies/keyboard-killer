@@ -8,12 +8,64 @@ wrong screen.
 
 from __future__ import annotations
 
+import glob
 import json
 import os
 import re
 import subprocess
+from dataclasses import replace
+from pathlib import Path
 
 from keyboard_killer.platform.base import DisplayLayout, MonitorInfo
+
+
+def read_drm_edid_mm(drm_root: Path = Path("/sys/class/drm")) -> dict[str, tuple[float, float]]:
+    """Read physical panel dimensions (width_mm, height_mm) per connector from Linux DRM EDID.
+
+    Works identically on Wayland (GNOME/KDE) and X11 without spawning external tools.
+    Prefers the Detailed Timing Descriptor (millimetre precision) over the basic cm header.
+    """
+    out: dict[str, tuple[float, float]] = {}
+    for edid_path in sorted(glob.glob(str(drm_root / "card*-*" / "edid"))):
+        p = Path(edid_path)
+        conn_dir = p.parent.name
+        if "-" not in conn_dir:
+            continue
+        connector = conn_dir.split("-", 1)[1]
+        status_p = p.parent / "status"
+        try:
+            if status_p.exists() and status_p.read_text().strip() != "connected":
+                continue
+            data = p.read_bytes()
+        except OSError:
+            continue
+        if len(data) < 69 or data[:8] != b"\x00\xff\xff\xff\xff\xff\xff\x00":
+            continue
+        w_mm = float(data[66] | ((data[68] & 0xF0) << 4))
+        h_mm = float(data[67] | ((data[68] & 0x0F) << 8))
+        if w_mm < 100.0 or h_mm < 80.0:
+            w_cm, h_cm = data[21], data[22]
+            if w_cm > 0 and h_cm > 0:
+                w_mm, h_mm = float(w_cm * 10), float(h_cm * 10)
+            else:
+                continue
+        out[connector] = (w_mm, h_mm)
+    return out
+
+
+def _attach_edid_mm(layout: DisplayLayout, mm_by_conn: dict[str, tuple[float, float]]) -> DisplayLayout:
+    if not mm_by_conn:
+        return layout
+    updated = []
+    for mon in layout.monitors:
+        if mon.width_mm > 0 and mon.height_mm > 0:
+            updated.append(mon)
+        elif mon.connector in mm_by_conn:
+            w_mm, h_mm = mm_by_conn[mon.connector]
+            updated.append(replace(mon, width_mm=w_mm, height_mm=h_mm))
+        else:
+            updated.append(mon)
+    return replace(layout, monitors=tuple(updated))
 
 
 def parse_mutter_display_state(gvariant_text: str) -> DisplayLayout:
@@ -132,6 +184,7 @@ def parse_kscreen_layout(text: str) -> DisplayLayout:
 
 def get_display_layout() -> DisplayLayout:
     """Query the active logical monitor layout, with a safe single-screen fallback."""
+    edid_mm = read_drm_edid_mm()
     try:
         res = subprocess.run(
             [
@@ -152,7 +205,7 @@ def get_display_layout() -> DisplayLayout:
         )
         layout = parse_mutter_display_state(res.stdout)
         if layout.monitors and layout.monitors[0].connector != "DEFAULT":
-            return layout
+            return _attach_edid_mm(layout, edid_mm)
     except (OSError, subprocess.SubprocessError, ValueError):
         pass
     try:
@@ -168,6 +221,6 @@ def get_display_layout() -> DisplayLayout:
             check=True,
             env=env,
         )
-        return parse_kscreen_layout(res.stdout)
+        return _attach_edid_mm(parse_kscreen_layout(res.stdout), edid_mm)
     except (OSError, subprocess.SubprocessError, ValueError, json.JSONDecodeError):
-        return parse_mutter_display_state("")
+        return _attach_edid_mm(parse_mutter_display_state(""), edid_mm)

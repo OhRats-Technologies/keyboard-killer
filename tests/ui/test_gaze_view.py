@@ -1,4 +1,4 @@
-"""UI tests for the gaze field and speech test panel."""
+"""UI tests for the gaze field, quick controls, and speech/camera settings."""
 
 from __future__ import annotations
 
@@ -87,10 +87,10 @@ def test_home_screen_cursor_toggle_uses_the_overlay_controller(qapp, tmp_path) -
         window.screen_cursor = fake
         window.home.cursor_button.click()
         assert fake.running
-        assert window.home.cursor_button.text() == "HIDE SCREEN CURSOR"
+        assert window.home.cursor_button.text() == "Hide gaze dot"
         window.home.cursor_button.click()
         assert not fake.running
-        assert window.home.cursor_button.text() == "SHOW SCREEN CURSOR"
+        assert window.home.cursor_button.text() == "Show gaze dot"
 
         failing = FailingCursor()
         window.screen_cursor = failing
@@ -102,11 +102,14 @@ def test_home_screen_cursor_toggle_uses_the_overlay_controller(qapp, tmp_path) -
         window.close()
 
 
-def test_models_panel_renders_a_speech_test_result(qapp, tmp_path) -> None:
+def test_settings_panel_renders_speech_test_and_toggles_pipewire_sharing(qapp, tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("keyboard_killer.ui.settings.window.pipewire_available", lambda: True)
     window = _window(tmp_path)
-    panel = window.pages["Models"]
+    window.config.camera_mode = "mono"
+    window.config.cam1_by_id = "/dev/v4l/by-id/cam-a"
+    panel = window.settings
     try:
-        panel._on_done(
+        panel._on_speech_done(
             SpeechTestResult(
                 transcript="click send",
                 latency_ms=42.0,
@@ -116,31 +119,13 @@ def test_models_panel_renders_a_speech_test_result(qapp, tmp_path) -> None:
                 engine="parakeet-tdt-0.6b-v2",
             )
         )
-        assert "click send" in panel.test_transcript.text()
-        assert "42 MS" in panel.test_detail.text()
-        assert panel.test_status.text() == "HEARD · LOCAL PARAKEET"
-        assert panel.test_button.isEnabled()
-    finally:
-        window.shutdown()
-        window.close()
+        assert "click send" in panel.mic_result.text()
+        assert "42 ms" in panel.mic_result.text()
 
-
-def test_cameras_panel_toggles_pipewire_sharing(qapp, tmp_path, monkeypatch) -> None:
-    from keyboard_killer.config.schema import AppConfig
-
-    monkeypatch.setattr("keyboard_killer.ui.app.pipewire_available", lambda: True)
-    window = _window(tmp_path)
-    window.config.camera_mode = "mono"
-    window.config.cam1_by_id = "/dev/v4l/by-id/cam-a"
-    window.config.cam2_by_id = "/dev/v4l/by-id/cam-b"
-    panel = window.pages["Cameras"]
-    try:
         panel.refresh()
-        assert panel.share_button.isEnabled()
-        panel._toggle_sharing(True)
-        assert window.config.camera_backend == "pipewire"
+        assert panel.share_camera.isEnabled()
+        panel.share_camera.setChecked(True)
         assert AppConfig.load(window.paths.settings_path).camera_backend == "pipewire"
-        assert panel.share_button.isChecked()
     finally:
         window.shutdown()
         window.close()
@@ -169,10 +154,11 @@ def test_home_transcript_overlay_toggle_uses_the_controller(qapp, tmp_path) -> N
         window.transcript_overlay = fake
         window.home.transcript_button.click()
         assert fake.running
-        assert window.home.transcript_button.text() == "HIDE TRANSCRIPT"
+        assert window.home.transcript_button.text() == "Hide live captions"
         assert window.config.transcript_overlay is True
         window.home.transcript_button.click()
         assert not fake.running
+        assert window.home.transcript_button.text() == "Show live captions"
         assert window.config.transcript_overlay is False
     finally:
         window.shutdown()

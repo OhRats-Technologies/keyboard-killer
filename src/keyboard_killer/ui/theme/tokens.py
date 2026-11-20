@@ -1,8 +1,7 @@
 """OhRats UI-kit tokens for the desktop app.
 
-The values mirror `OhRats-Technologies/ui/css/tokens.css`: warm neutrals, a
-single brown border, sharp edges, Inter for prose, and Space Mono for labels,
-numbers, and technical state. No widget owns a raw color.
+Warm neutrals, subtle hairline borders, consistent radii, Inter for UI and prose,
+and Space Mono strictly for small secondary telemetry. No widget owns a raw color.
 """
 
 from __future__ import annotations
@@ -14,6 +13,8 @@ from string import Template
 
 FONT_DIR = Path(__file__).with_name("fonts")
 CHEVRON = Path(__file__).with_name("chevron-down.svg")
+CHECK_LIGHT = Path(__file__).with_name("check-light.svg")
+CHECK_DARK = Path(__file__).with_name("check-dark.svg")
 _LOADED_FONTS = False
 
 
@@ -42,14 +43,14 @@ class ThemeTokens:
     spacing_sm: int = 8
     spacing_md: int = 16
     spacing_lg: int = 24
-    radius: int = 0
-    radius_sm: int = 0
+    radius: int = 10
+    radius_sm: int = 7
     font_family: str = 'Inter, "Noto Sans", "DejaVu Sans", sans-serif'
     mono_family: str = '"Space Mono", "MesloLGS Nerd Font Mono", monospace'
     font_size: int = 14
-    title_size: int = 30
-    heading_size: int = 18
-    pill_height: int = 32
+    title_size: int = 26
+    heading_size: int = 16
+    pill_height: int = 28
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -57,36 +58,36 @@ class ThemeTokens:
 
 LIGHT = ThemeTokens(
     name=ThemeName.LIGHT,
-    background="#efede5",
+    background="#f4f2ec",
     surface="#ffffff",
-    surface_alt="#f5f5f5",
-    sidebar="#e8e5dc",
-    text="#1a1a1b",
-    muted="#595959",
-    accent="#1a1a1b",
-    accent_text="#efede5",
-    border="#634936",
-    danger="#d95555",
-    success="#2f9e62",
-    warning="#a36a00",
-    selected="#dcd8ce",
+    surface_alt="#eceae2",
+    sidebar="#eae7df",
+    text="#19191a",
+    muted="#6b6862",
+    accent="#19191a",
+    accent_text="#f7f6f2",
+    border="#dad6cb",
+    danger="#cc4b4b",
+    success="#278952",
+    warning="#9c6500",
+    selected="#dfdbd0",
 )
 
 DARK = ThemeTokens(
     name=ThemeName.DARK,
-    background="#1a1a1b",
-    surface="#202021",
-    surface_alt="#2a2a2b",
-    sidebar="#151516",
-    text="#efede5",
-    muted="#a3a393",
-    accent="#efede5",
-    accent_text="#1a1a1b",
-    border="#634936",
+    background="#141415",
+    surface="#1c1c1e",
+    surface_alt="#252528",
+    sidebar="#111112",
+    text="#f2f0ea",
+    muted="#928f87",
+    accent="#f2f0ea",
+    accent_text="#141415",
+    border="#2c2c30",
     danger="#e26464",
-    success="#43b777",
-    warning="#e2b866",
-    selected="#2a2a2b",
+    success="#3fb975",
+    warning="#e0b25c",
+    selected="#252528",
 )
 
 
@@ -157,6 +158,7 @@ def stylesheet(tokens: ThemeTokens) -> str:
         "pill_height": f"{tokens.pill_height}px",
         "pill_radius": f"{tokens.pill_height // 2}px",
         "chevron": str(CHEVRON),
+        "checkmark": str(CHECK_DARK if tokens.name is ThemeName.DARK else CHECK_LIGHT),
     }
     return Template(_QSS).substitute(values)
 
@@ -171,10 +173,7 @@ _QSS = """
     QMainWindow, QDialog {
         background: $background;
     }
-    QLabel {
-        background: transparent;
-    }
-    QCheckBox {
+    QLabel, QCheckBox {
         background: transparent;
     }
     QWidget#Content {
@@ -186,45 +185,31 @@ _QSS = """
     }
     QLabel#Wordmark {
         color: $text;
-        font-family: $mono_family;
-        font-size: 13px;
-        font-weight: 700;
+        font-family: $font_family;
+        font-size: 14px;
+        font-weight: 600;
     }
     QLabel#Title {
         color: $text;
         font-size: $title_size;
-        font-weight: 500;
+        font-weight: 600;
     }
     QLabel#Display {
         color: $text;
-        font-size: 46px;
-        font-weight: 400;
-    }
-    QFrame#TopBar {
-        background: $background;
-        border-bottom: 1px solid $border;
-    }
-    QLabel#Breadcrumb {
-        color: $muted;
-        font-family: $mono_family;
-        font-size: 10px;
-        font-weight: 700;
-    }
-    QPushButton#Chip {
-        background: $surface;
-        color: $text;
-        border: 1px solid $border;
-        border-radius: 0px;
-        padding: 4px 10px;
-        min-height: 22px;
-        font-family: $mono_family;
-        font-size: 9px;
-        font-weight: 400;
+        font-size: 36px;
+        font-weight: 600;
     }
     QLabel#Heading {
         color: $text;
         font-size: $heading_size;
-        font-weight: 500;
+        font-weight: 600;
+    }
+    QLabel#SectionTitle {
+        color: $muted;
+        font-family: $font_family;
+        font-size: 12px;
+        font-weight: 600;
+        padding-top: 4px;
     }
     QLabel#Mono, QLabel#Eyebrow {
         color: $muted;
@@ -233,18 +218,27 @@ _QSS = """
     }
     QLabel#Muted {
         color: $muted;
+        font-size: 13px;
     }
     QLabel#Success {
         color: $success;
+        font-weight: 500;
     }
     QLabel#Danger {
         color: $danger;
+        font-weight: 500;
     }
     QLabel#Warning {
         color: $warning;
+        font-weight: 500;
     }
     QFrame#Card {
         background: $surface;
+        border: 1px solid $border;
+        border-radius: $radius;
+    }
+    QFrame#SubtleCard {
+        background: $surface_alt;
         border: 1px solid $border;
         border-radius: $radius;
     }
@@ -253,95 +247,145 @@ _QSS = """
         max-height: 1px;
         min-height: 1px;
     }
-    QFrame#Pill, QLabel#Pill {
-        background: $surface;
+    QLabel#StatusDot {
+        border-radius: 5px;
+        min-width: 10px;
+        max-width: 10px;
+        min-height: 10px;
+        max-height: 10px;
+    }
+    QLabel#Pill {
+        background: $surface_alt;
         border: 1px solid $border;
-        border-radius: 0px;
+        border-radius: $pill_radius;
         color: $muted;
-        font-family: $mono_family;
-        font-size: 10px;
-        min-height: $pill_height;
-        padding: 0 $spacing_md;
+        font-family: $font_family;
+        font-size: 12px;
+        font-weight: 500;
+        padding: 3px 10px;
     }
     QPushButton {
-        background: transparent;
+        background: $surface;
         color: $text;
         border: 1px solid $border;
-        border-radius: 0px;
-        padding: $spacing_sm $spacing_md;
+        border-radius: $radius_sm;
+        padding: 7px 14px;
         min-height: 32px;
-        font-family: $mono_family;
-        font-size: 11px;
-        font-weight: 700;
+        font-family: $font_family;
+        font-size: 13px;
+        font-weight: 500;
     }
     QPushButton:hover {
         background: $surface_alt;
-        border-color: $text;
     }
-    QPushButton:focus {
-        border: 1px solid $text;
+    QPushButton:checked {
+        background: $accent;
+        color: $accent_text;
+        border-color: $accent;
     }
     QPushButton:disabled {
         color: $muted;
+        background: $surface_alt;
         border-color: $border;
     }
     QPushButton#Primary {
-        background: $text;
-        color: $background;
-        border: 1px solid $text;
+        background: $accent;
+        color: $accent_text;
+        border: 1px solid $accent;
+        padding: 8px 18px;
+        font-weight: 600;
     }
     QPushButton#Primary:hover {
-        background: $text;
-        color: $background;
-        border-color: $muted;
+        opacity: 0.92;
     }
     QPushButton#Primary:disabled {
         background: $surface_alt;
         color: $muted;
-        border: 1px solid $border;
+        border-color: $border;
+    }
+    QPushButton#Ghost {
+        background: transparent;
+        color: $muted;
+        border: none;
+        padding: 6px 10px;
+        min-height: 28px;
+        font-weight: 500;
+    }
+    QPushButton#Ghost:hover {
+        color: $text;
+        background: $surface_alt;
+    }
+    QPushButton#Link {
+        background: transparent;
+        color: $muted;
+        border: none;
+        padding: 2px 4px;
+        min-height: 20px;
+        font-size: 12px;
+        font-weight: 500;
+        text-align: left;
+    }
+    QPushButton#Link:hover {
+        color: $text;
     }
     QPushButton#Destructive {
         color: $danger;
-        border: 1px solid $danger;
+        border: 1px solid $border;
         background: transparent;
+    }
+    QPushButton#Destructive:hover {
+        border-color: $danger;
+        background: $surface_alt;
+    }
+    QPushButton#KeyCap {
+        background: $surface_alt;
+        color: $text;
+        border: 1px solid $border;
+        border-radius: $radius_sm;
+        font-family: $mono_family;
+        font-size: 12px;
+        padding: 5px 12px;
+        min-height: 28px;
     }
     QListWidget#Nav {
         background: $sidebar;
         border: none;
         outline: none;
-        padding: $spacing_sm 0;
-        font-family: $mono_family;
-        font-size: 11px;
-        font-weight: 700;
+        padding: 4px 0;
+        font-family: $font_family;
+        font-size: 13px;
+        font-weight: 500;
     }
     QListWidget#Nav::item {
-        padding: $spacing_sm $spacing_md;
-        border-left: 2px solid transparent;
-        margin: 0;
+        padding: 9px 12px;
+        border-radius: $radius_sm;
+        margin: 2px 0;
+        color: $muted;
     }
     QListWidget#Nav::item:hover {
         background: $surface_alt;
+        color: $text;
     }
     QListWidget#Nav::item:selected {
         background: $selected;
         color: $text;
-        border-left: 2px solid $text;
+        font-weight: 600;
     }
     QLineEdit, QComboBox, QSpinBox, QTextEdit, QPlainTextEdit {
         background: $surface;
         color: $text;
         border: 1px solid $border;
-        border-radius: 0px;
-        padding: 6px $spacing_sm;
+        border-radius: $radius_sm;
+        padding: 6px 10px;
         min-height: 24px;
-        selection-background-color: $text;
-        selection-color: $background;
+        selection-background-color: $accent;
+        selection-color: $accent_text;
     }
     QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QTextEdit:focus, QPlainTextEdit:focus {
-        border: 1px solid $text;
+        border-color: $text;
     }
     QComboBox::drop-down {
-        border-left: 1px solid $border;
+        border: none;
         width: 24px;
     }
     QComboBox::down-arrow {
@@ -353,86 +397,103 @@ _QSS = """
         background: $surface;
         color: $text;
         border: 1px solid $border;
-        selection-background-color: $text;
-        selection-color: $background;
+        border-radius: $radius_sm;
+        padding: 4px;
+        selection-background-color: $selected;
+        selection-color: $text;
     }
     QCheckBox {
-        spacing: $spacing_sm;
+        spacing: 10px;
         color: $text;
+        font-size: 13px;
+    }
+    QCheckBox::indicator {
+        width: 18px;
+        height: 18px;
+        border-radius: 5px;
+        border: 1px solid $border;
+        background: $surface;
+    }
+    QCheckBox::indicator:checked {
+        background: $accent;
+        border-color: $accent;
+        image: url("$checkmark");
     }
     QProgressBar {
         background: $surface_alt;
         border: none;
-        border-radius: 0px;
-        color: $text;
-        font-family: $mono_family;
+        border-radius: 3px;
+        color: $muted;
         font-size: 10px;
         text-align: center;
-        min-height: 20px;
     }
     QProgressBar::chunk {
-        background: $text;
-        border-radius: 0px;
+        background: $accent;
+        border-radius: 3px;
     }
     QTableWidget {
         background: $surface;
         color: $text;
-        gridline-color: $border;
+        gridline-color: transparent;
         border: 1px solid $border;
-        border-radius: 0px;
-        selection-background-color: $text;
-        selection-color: $background;
+        border-radius: $radius;
+        selection-background-color: $selected;
+        selection-color: $text;
     }
     QTableWidget::item {
-        padding: $spacing_xs;
+        padding: 8px 10px;
+        border-bottom: 1px solid $border;
     }
     QHeaderView::section {
-        background: $background;
+        background: $surface;
         color: $muted;
         border: none;
         border-bottom: 1px solid $border;
-        padding: 6px;
-        font-family: $mono_family;
-        font-size: 10px;
-        font-weight: 700;
+        padding: 8px 10px;
+        font-family: $font_family;
+        font-size: 12px;
+        font-weight: 600;
     }
     QScrollArea {
         border: none;
+        background: transparent;
+    }
+    QScrollArea > QWidget > QWidget {
+        background: transparent;
     }
     QScrollBar:vertical {
-        background: $background;
-        width: 10px;
-        margin: 0;
+        background: transparent;
+        width: 8px;
+        margin: 2px 0;
     }
     QScrollBar::handle:vertical {
         background: $border;
+        border-radius: 4px;
         min-height: 24px;
     }
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
         height: 0;
     }
-    QStatusBar {
-        background: $sidebar;
-        color: $muted;
-        border-top: 1px solid $border;
-        font-family: $mono_family;
-        font-size: 10px;
-    }
     QMenu {
         background: $surface;
         color: $text;
         border: 1px solid $border;
+        border-radius: $radius_sm;
+        padding: 4px;
     }
     QMenu::item {
-        padding: 6px 18px;
+        padding: 6px 14px;
+        border-radius: 4px;
     }
     QMenu::item:selected {
-        background: $text;
-        color: $background;
+        background: $selected;
+        color: $text;
     }
     QToolTip {
         background: $surface;
         color: $text;
         border: 1px solid $border;
+        border-radius: 6px;
+        padding: 4px 8px;
     }
 """

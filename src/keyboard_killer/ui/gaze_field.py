@@ -182,70 +182,49 @@ class GazeField(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(tokens.surface_alt))
         for rect in monitors:
-            painter.drawRect(rect)
-
-        grid = QColor(tokens.border)
-        grid.setAlpha(28)
-        painter.setPen(QPen(grid, 1))
-        step = 24
-        for x in range(int(screen.left()), int(screen.right()), step):
-            painter.drawLine(x, int(screen.top()), x, int(screen.bottom()))
-        for y in range(int(screen.top()), int(screen.bottom()), step):
-            painter.drawLine(int(screen.left()), y, int(screen.right()), y)
+            painter.drawRoundedRect(rect, 6.0, 6.0)
 
         edge = QColor(tokens.border)
-        edge.setAlpha(90)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(edge, 1))
+        painter.setPen(QPen(edge, 1.0))
         for rect in monitors:
-            painter.drawRect(rect)
+            painter.drawRoundedRect(rect, 6.0, 6.0)
 
         point, mode = self._point, self._mode
-        if len(self._trail) > 1:
-            for index in range(1, len(self._trail)):
-                alpha = int(80 * index / len(self._trail))
-                trail = QColor(tokens.muted)
-                trail.setAlpha(alpha)
-                painter.setPen(QPen(trail, 1.4))
-                painter.drawLine(self._trail[index - 1], self._trail[index])
+        if mode != "demo":
+            if len(self._trail) > 1:
+                for index in range(1, len(self._trail)):
+                    alpha = int(75 * index / len(self._trail))
+                    trail = QColor(tokens.muted)
+                    trail.setAlpha(alpha)
+                    painter.setPen(QPen(trail, 1.4))
+                    painter.drawLine(self._trail[index - 1], self._trail[index])
+            draw_gaze_cursor(painter, point, scale=0.45)
+        else:
+            # Calm resting state when engine is stopped or paused (no jumping screensaver dot).
+            center = screen.center()
+            ring = QColor(tokens.muted)
+            ring.setAlpha(90)
+            painter.setPen(QPen(ring, 1.5))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(center, 7.0, 7.0)
 
-        draw_gaze_cursor(painter, point, scale=0.45)
-
-        label_font = QFont("Space Mono")
-        label_font.setPointSize(7)
-        label_font.setBold(True)
+        label_font = QFont("Inter")
+        label_font.setPointSize(9)
+        label_font.setWeight(QFont.Weight.Medium)
         painter.setFont(label_font)
-        painter.setPen(QColor(tokens.muted))
-        painter.drawText(12, 18, "GAZE FIELD")
-
-        badge = QColor(tokens.success) if mode == "live" else QColor(tokens.warning)
-        painter.setPen(badge)
+        badge_color = QColor(tokens.success) if mode == "live" else QColor(tokens.muted)
+        painter.setPen(badge_color)
         badge_text = {
-            "live": "LIVE",
-            "no-face": "LIVE · NO FACE",
-            "demo": "DEMO · NO VISION DATA",
+            "live": "● Live",
+            "no-face": "No face in view",
+            "demo": "Idle",
         }[mode]
         painter.drawText(
-            QRectF(0, 6, self.width() - 12, 16),
+            QRectF(12, 6, self.width() - 24, 18),
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
             badge_text,
         )
-
-        sample = self._last_sample
-        if sample is not None and sample.live:
-            detail = (
-                f"X {sample.x:6.0f}  Y {sample.y:6.0f}  "
-                f"{'BLINK' if sample.blinking else 'OPEN'}  {sample.age_s * 1000:4.0f} MS"
-            )
-        else:
-            detail = ""
-        if detail:
-            painter.setPen(QColor(tokens.muted))
-            painter.drawText(
-                QRectF(12, self.height() - 18, self.width() - 24, 14),
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                detail,
-            )
         painter.end()
 
     def shutdown(self) -> None:

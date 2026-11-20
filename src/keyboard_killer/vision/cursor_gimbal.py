@@ -21,6 +21,7 @@ from keyboard_killer.ipc.state import (
     SharedGazeWriter,
 )
 from keyboard_killer.vision.calibrator import StereoGazeModel
+from keyboard_killer.vision.geo_gaze import GeoGazeModel, GeoGazeTracker
 from keyboard_killer.vision.landmarks import (
     CameraObservation,
     build_stereo_feature_vector,
@@ -309,13 +310,14 @@ def _averaged_nose(
 
 def run_vision_loop(
     config: AppConfig,
-    model: StereoGazeModel,
+    model: StereoGazeModel | GeoGazeModel,
     dry_run: bool = False,
     duration_sec: float | None = None,
     pointer: PointerBackend | None = None,
     on_step: Callable[[GimbalStepResult], None] | None = None,
     stop_event: threading.Event | None = None,
     on_controller_ready: Callable[[GazeGimbalController], None] | None = None,
+    on_tracker_ready: Callable[[GeoGazeTracker], None] | None = None,
 ) -> None:
     """Run the 30Hz dual-camera vision + 60Hz cursor/IPC loop until interrupted."""
     config.camera_mode, config.cam1_by_id, config.cam2_by_id = resolve_camera_config(
@@ -329,6 +331,18 @@ def run_vision_loop(
         )
 
     layout = get_display_layout()
+    tracker: GeoGazeTracker | None = None
+    if isinstance(model, GeoGazeModel):
+        from keyboard_killer.vision.geo_gaze import monitor_specs_from_layout
+
+        model.with_layout(monitor_specs_from_layout(layout))
+        tracker = GeoGazeTracker(
+            model,
+            enable_chase=bool(getattr(config, "gaze_online_chase", True)),
+            enable_ekf=bool(getattr(config, "gaze_online_ekf", True)),
+        )
+        if on_tracker_ready is not None:
+            on_tracker_ready(tracker)
     owns_pointer = pointer is None
     active_pointer: PointerBackend = (
         pointer
@@ -402,7 +416,18 @@ def run_vision_loop(
                     )
 
                     raw_gaze: tuple[float, float] | None = None
-                    if o1 is not None and o2 is not None:
+                    if tracker is not None:
+                        if o1 is not None or o2 is not None:
+                            feat, _ = build_stereo_feature_vector(o1, o2)
+                            last_stereo_feat = feat
+                            if not last_blinking:
+                                pred = tracker.update(feat, loop_start)
+                                if np.all(np.isfinite(pred)):
+                                    raw_gaze = (
+                                        float(pred[0]) + model.session_offset_x,
+                                        float(pred[1]) + model.session_offset_y,
+                                    )
+                    elif o1 is not None and o2 is not None:
                         feat, both_ok = build_stereo_feature_vector(o1, o2)
                         if both_ok:
                             last_stereo_feat = feat
@@ -421,6 +446,8 @@ def run_vision_loop(
                     is_blinking=last_blinking,
                     t_sec=loop_start,
                 )
+                if tracker is not None:
+                    tracker.observe_display(step.cursor_x, step.cursor_y, loop_start)
                 step.stereo_feat = last_stereo_feat
                 step.yaw_deg = last_yaw_deg
                 shm_writer.write(step.cursor_x, step.cursor_y, step.flags)

@@ -1,4 +1,4 @@
-"""Onboarding pages and window (welcome -> ... -> ready)."""
+"""Calm, progressive-enhancement 4-step setup flow (embeddable or dialog)."""
 
 from __future__ import annotations
 
@@ -6,27 +6,20 @@ import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 import cv2
-
 import numpy as np
-from PySide6.QtCore import QThread, QTimer, Qt, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtCore import QRectF, QThread, QTimer, Qt, Signal
+from PySide6.QtGui import QImage, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QDialog,
     QFormLayout,
-    QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
-    QListWidget,
     QProgressBar,
     QPushButton,
-    QProgressBar,
+    QScrollArea,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -43,74 +36,98 @@ from keyboard_killer.config.schema import AppConfig
 from keyboard_killer.diagnostics.doctor import DoctorReport, collect_doctor
 from keyboard_killer.models.catalog import get_asset
 from keyboard_killer.models.downloader import DownloadProgress, download_asset
-from keyboard_killer.models.providers.acp_registry import fetch_registry
-from keyboard_killer.models.providers.openai_compat import OpenAICompatProvider
-from keyboard_killer.models.providers.presets import load_presets
-from keyboard_killer.models.providers.secrets import keyring_available, set_secret
-from keyboard_killer.platform.linux.cameras import discover_v4l_by_id
-from keyboard_killer.ui.components import Card, eyebrow
-from keyboard_killer.ui.theme.tokens import load_bundled_fonts
+from keyboard_killer.platform.linux.cameras import discover_v4l_by_id, friendly_camera_name
+from keyboard_killer.ui.components import Card, divider, eyebrow
 from keyboard_killer.ui.onboarding.flow import (
     OPTIONAL_STEPS,
     OnboardingFlow,
     OnboardingStep,
     STEPS,
 )
+from keyboard_killer.ui.theme.tokens import load_bundled_fonts
+from keyboard_killer.ui.tray import make_icon
 from keyboard_killer.voice.stt.factory import stt_report
 
 
-class CameraPreview(QLabel):
-    """Small live preview; disabled on headless test runs."""
+class CameraPreview(QWidget):
+    """Cropped, rounded live camera preview with zero letterboxing or inline style clashes."""
 
-    def __init__(self, name: str = "") -> None:
-        super().__init__("No preview")
+    def __init__(self, name: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
         self.name = name
-        self.setMinimumSize(260, 150)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet("background: #101216; color: #9aa3b2; border-radius: 8px;")
+        self.setFixedSize(240, 135)
         self._cap = None
+        self._pixmap: QPixmap | None = None
+        self._placeholder = "Camera preview"
         self._timer = QTimer(self)
-        self._timer.setInterval(120)
+        self._timer.setInterval(80)
         self._timer.timeout.connect(self._read)
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        self._placeholder = text
+        if text:
+            self._pixmap = None
+        self.update()
 
     def start(self, path: str) -> None:
         self.stop()
         if not path:
-            self.setText("Choose a camera")
+            self.setText("Select a camera")
             return
         try:
-            import cv2
-
             cap = cv2.VideoCapture(path)
             if not cap.isOpened():
-                self.setText(f"Could not open\n{Path(path).name}")
+                self.setText("Camera unavailable")
                 return
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, 480)
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 270)
             self._cap = cap
-            self.setText("")
+            self._placeholder = ""
             self._timer.start()
+            self.update()
         except Exception:
             self.setText("Preview unavailable")
 
     def _read(self) -> None:
         if self._cap is None:
             return
-        import cv2
-
         ok, frame = self._cap.read()
         if not ok or frame is None:
             return
+        frame = cv2.flip(frame, 1)  # Mirror like FaceTime / Photo Booth
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width, channels = rgb.shape
         image = QImage(rgb.data, width, height, channels * width, QImage.Format.Format_RGB888).copy()
-        self.setPixmap(
-            QPixmap.fromImage(image).scaled(
-                self.size(),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
+        scaled = QPixmap.fromImage(image).scaled(
+            self.size(),
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
         )
+        # Center-crop to exact widget dimensions so there are zero black bars.
+        x = max(0, (scaled.width() - self.width()) // 2)
+        y = max(0, (scaled.height() - self.height()) // 2)
+        self._pixmap = scaled.copy(x, y, self.width(), self.height())
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        from PySide6.QtGui import QColor
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        rect = QRectF(self.rect())
+        clip = QPainterPath()
+        clip.addRoundedRect(rect, 8.0, 8.0)
+        painter.setClipPath(clip)
+        tokens = getattr(self.window(), "theme_tokens", None)
+        bg_hex = tokens.surface_alt if tokens is not None else "#252528"
+        fg_hex = tokens.muted if tokens is not None else "#928f87"
+        painter.fillRect(rect, QColor(bg_hex))
+        if self._pixmap is not None:
+            painter.drawPixmap(0, 0, self._pixmap)
+        elif self._placeholder:
+            painter.setPen(QColor(fg_hex))
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, self._placeholder)
+        painter.end()
 
     def stop(self) -> None:
         self._timer.stop()
@@ -127,8 +144,8 @@ class StepPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(8, 8, 8, 8)
-        self.layout.setSpacing(12)
+        self.layout.setContentsMargins(0, 4, 0, 0)
+        self.layout.setSpacing(14)
         self.title = QLabel("")
         self.title.setObjectName("Title")
         self.subtitle = QLabel("")
@@ -137,11 +154,17 @@ class StepPage(QWidget):
         self.layout.addWidget(self.title)
         self.layout.addWidget(self.subtitle)
         self.body = QVBoxLayout()
+        self.body.setSpacing(14)
         self.layout.addLayout(self.body, 1)
         self.problem = QLabel("")
         self.problem.setObjectName("Warning")
         self.problem.setWordWrap(True)
+        self.problem.setVisible(False)
         self.layout.addWidget(self.problem)
+
+    def set_problem(self, message: str) -> None:
+        self.problem.setText(message)
+        self.problem.setVisible(bool(message))
 
     def on_enter(self) -> None:
         return None
@@ -162,384 +185,27 @@ class WelcomePage(StepPage):
         super().__init__()
         self.title.setText("Welcome to Keyboard-Killer")
         self.subtitle.setText(
-            "Look at a target and say what to do. Voice and camera processing stays on this device."
+            "Look at anything on your screens and speak to click, scroll, or type. "
+            "Everything runs privately on this device."
         )
-        card = QFrame()
-        card.setObjectName("Card")
-        card_layout = QVBoxLayout(card)
-        for text in (
-            "1. Check camera and input permissions.",
-            "2. Choose one or two cameras and run calibration.",
-            "3. Download the English speech model.",
-            "4. Practice once, then start listening.",
+        card = Card()
+        for heading, desc in (
+            ("1. Connect your devices", "Confirm your camera, microphone, and local speech engine."),
+            ("2. Quick calibration", "Follow a short sequence of dots on one screen. Multi-monitor layouts adapt automatically."),
+            ("3. Start hands-free", "Pause or resume anytime from the menu bar."),
         ):
-            label = QLabel(text)
-            label.setWordWrap(True)
-            card_layout.addWidget(label)
+            block = QVBoxLayout()
+            block.setSpacing(2)
+            h = QLabel(heading)
+            h.setObjectName("Heading")
+            d = QLabel(desc)
+            d.setObjectName("Muted")
+            d.setWordWrap(True)
+            block.addWidget(h)
+            block.addWidget(d)
+            card.layout.addLayout(block)
         self.body.addWidget(card)
         self.body.addStretch(1)
-
-
-class _ScreenCheckWorker(QThread):
-    done = Signal(object)
-    failed = Signal(str)
-
-    def run(self) -> None:
-        try:
-            if not sys.platform.startswith("linux"):
-                raise RuntimeError("The screen check is Linux-only.")
-            from keyboard_killer.config import get_display_layout
-            from keyboard_killer.platform.linux.screen import WaylandScreenCapturer
-
-            layout = get_display_layout()
-            image = WaylandScreenCapturer().capture_rect(
-                0, 0, layout.total_width, layout.total_height
-            )
-            self.done.emit(image)
-        except Exception as exc:
-            self.failed.emit(str(exc))
-
-
-class PermissionsPage(StepPage):
-    step = OnboardingStep.PERMISSIONS
-    next_label = "Continue"
-
-    def __init__(
-        self,
-        report_provider: Callable[[], DoctorReport] | None = None,
-        *,
-        auto_screen: bool = True,
-    ) -> None:
-        super().__init__()
-        self.title.setText("Permissions")
-        self.subtitle.setText(
-            "Each row has one action. A denied permission marks the step unresolved, but it does not block setup."
-        )
-        self.report_provider = report_provider
-        self.auto_screen = auto_screen
-        self._screen_attempted = False
-        self._screen_worker: _ScreenCheckWorker | None = None
-        self.rows = QGridLayout()
-        self.body.addLayout(self.rows)
-
-        screen_card = Card()
-        screen_card.layout.addWidget(eyebrow("SCREEN ACCESS"))
-        screen_row = QHBoxLayout()
-        self.screen_preview = QLabel("Waiting for a screenshot…")
-        self.screen_preview.setObjectName("Muted")
-        self.screen_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.screen_preview.setFixedSize(320, 110)
-        self.screen_preview.setWordWrap(True)
-        screen_row.addWidget(self.screen_preview)
-        screen_side = QVBoxLayout()
-        screen_copy = QLabel(
-            "A test screenshot verifies the desktop portal. It stays in memory and is never saved."
-        )
-        screen_copy.setObjectName("Muted")
-        screen_copy.setWordWrap(True)
-        screen_side.addWidget(screen_copy)
-        self.screen_note = QLabel("NOT CAPTURED")
-        self.screen_note.setObjectName("Mono")
-        screen_side.addWidget(self.screen_note)
-        self.screen_button = QPushButton("CAPTURE TEST SCREENSHOT")
-        self.screen_button.clicked.connect(self.capture_screen)
-        screen_side.addWidget(self.screen_button, 0, Qt.AlignmentFlag.AlignLeft)
-        screen_row.addLayout(screen_side, 1)
-        screen_card.layout.addLayout(screen_row)
-        self.body.addWidget(screen_card)
-
-        self.body.addStretch(1)
-        refresh = QPushButton("Check again")
-        refresh.clicked.connect(self.refresh)
-        self.body.addWidget(refresh, 0, Qt.AlignmentFlag.AlignLeft)
-        self._report: DoctorReport | None = None
-
-    def on_enter(self) -> None:
-        self.refresh()
-        if self.auto_screen and not self._screen_attempted:
-            self._screen_attempted = True
-            QTimer.singleShot(400, self.capture_screen)
-
-    def capture_screen(self) -> None:
-        if self._screen_worker is not None and self._screen_worker.isRunning():
-            return
-        self.screen_button.setEnabled(False)
-        self.screen_note.setText("REQUESTING SCREEN ACCESS…")
-        worker = _ScreenCheckWorker(self)
-        worker.done.connect(self._on_screen_done)
-        worker.failed.connect(self._on_screen_failed)
-        self._screen_worker = worker
-        worker.start()
-
-    def _on_screen_done(self, image: object) -> None:
-        self.screen_button.setEnabled(True)
-        try:
-            frame = np.asarray(image)
-            if frame.ndim != 3 or frame.size == 0:
-                raise ValueError("empty screenshot")
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            height, width, channels = rgb.shape
-            qimage = QImage(
-                rgb.data,
-                width,
-                height,
-                channels * width,
-                QImage.Format.Format_RGB888,
-            ).copy()
-            pixmap = QPixmap.fromImage(qimage).scaled(
-                520,
-                160,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            self.screen_preview.setPixmap(pixmap)
-            self.screen_preview.setText("")
-            self.screen_note.setText(f"CAPTURED · {width}×{height} · NOT SAVED")
-        except Exception as exc:
-            self._on_screen_failed(str(exc))
-
-    def _on_screen_failed(self, message: str) -> None:
-        self.screen_button.setEnabled(True)
-        self.screen_preview.setPixmap(QPixmap())
-        self.screen_preview.setText("No screenshot available.")
-        self.screen_note.setText(f"SCREEN ACCESS FAILED · {message}")
-
-    def close_worker(self) -> None:
-        if self._screen_worker is not None and self._screen_worker.isRunning():
-            self._screen_worker.wait(3000)
-
-    def refresh(self) -> None:
-        while self.rows.count():
-            item = self.rows.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-        try:
-            report = (
-                self.report_provider()
-                if self.report_provider is not None
-                else collect_doctor(check_providers=False)
-            )
-        except Exception as exc:
-            self.problem.setText(f"Could not read permissions: {exc}")
-            return
-        self._report = report
-        permissions = report.permissions
-        for row, (name, info) in enumerate(permissions.items()):
-            label = QLabel(name.replace("_", " ").capitalize())
-            state = QLabel(info.get("state", "unknown"))
-            state.setObjectName("Success" if info.get("state") == "granted" else "Warning")
-            action = QLabel(info.get("action") or info.get("detail", ""))
-            action.setObjectName("Muted")
-            action.setWordWrap(True)
-            self.rows.addWidget(label, row, 0)
-            self.rows.addWidget(state, row, 1)
-            self.rows.addWidget(action, row, 2)
-        self.problem.setText("")
-
-    @property
-    def unresolved(self) -> bool:
-        if self._report is None:
-            return True
-        return any(
-            info.get("state") in ("denied", "needs_restart")
-            for info in self._report.permissions.values()
-        )
-
-
-class CamerasPage(StepPage):
-    step = OnboardingStep.CAMERAS
-    next_label = "Continue"
-
-    def __init__(
-        self,
-        config: AppConfig,
-        paths: AppPaths,
-        *,
-        enable_previews: bool = True,
-    ) -> None:
-        super().__init__()
-        self.config = config
-        self.paths = paths
-        self.enable_previews = enable_previews
-        self.title.setText("Cameras")
-        self.subtitle.setText(
-            "Use one camera for a simpler mono setup, or two for the best stereo accuracy. "
-            "Pick stable devices; previews show which is which."
-        )
-        grid = QGridLayout()
-        self.mode = QComboBox()
-        self.mode.addItem("Automatic (use available cameras)", "auto")
-        self.mode.addItem("One camera (mono)", "mono")
-        self.mode.addItem("Two cameras (stereo, recommended)", "stereo")
-        index = self.mode.findData(self.config.camera_mode)
-        self.mode.setCurrentIndex(index if index >= 0 else 0)
-        self.mode.currentIndexChanged.connect(self.refresh_devices)
-        grid.addWidget(QLabel("Mode"), 0, 0)
-        grid.addWidget(self.mode, 0, 1)
-        self.cam1 = QComboBox()
-        self.cam2 = QComboBox()
-        self.preview1 = CameraPreview("cam1")
-        self.preview2 = CameraPreview("cam2")
-        grid.addWidget(QLabel("Camera 1"), 1, 0)
-        grid.addWidget(self.cam1, 1, 1)
-        grid.addWidget(QLabel("Camera 2"), 2, 0)
-        grid.addWidget(self.cam2, 2, 1)
-        grid.addWidget(self.preview1, 3, 0)
-        grid.addWidget(self.preview2, 3, 1)
-        self.body.addLayout(grid)
-        buttons = QHBoxLayout()
-        swap = QPushButton("Swap cameras")
-        swap.clicked.connect(self.swap)
-        buttons.addWidget(swap)
-        buttons.addStretch(1)
-        self.body.addLayout(buttons)
-        self.body.addStretch(1)
-        self.refresh_devices()
-
-    def refresh_devices(self) -> None:
-        devices = discover_v4l_by_id()
-        self.config.camera_mode = str(self.mode.currentData() or "auto")
-        mono = self.config.camera_mode == "mono"
-        second = self.config.camera_mode == "stereo" or (
-            self.config.camera_mode == "auto" and len(devices) >= 2
-        )
-        self._second_visible = second
-        for combo, current in ((self.cam1, self.config.cam1_by_id), (self.cam2, self.config.cam2_by_id)):
-            combo.clear()
-            combo.addItem("Choose a camera", "")
-            for device in devices:
-                combo.addItem(Path(device).name, device)
-            index = combo.findData(current)
-            if index < 0 and current:
-                combo.addItem(Path(current).name, current)
-                index = combo.count() - 1
-            combo.setCurrentIndex(index if index >= 0 else 0)
-            combo.setEnabled(second if combo is self.cam2 else True)
-            combo.currentIndexChanged.connect(self._start_previews)
-        self.preview2.setVisible(second)
-        self._start_previews()
-        if mono:
-            self.problem.setText("Mono mode uses one camera. Stereo gives better depth and head-pose tolerance.")
-        elif self.config.camera_mode == "stereo" and len(devices) < 2:
-            self.problem.setText(
-                "Stereo mode needs two stable cameras. Choose mono, or connect a second camera and refresh."
-            )
-        elif len(devices) < 2:
-            self.problem.setText(
-                "One camera found. Automatic will use the mono path; add a second camera for stereo."
-            )
-        else:
-            self.problem.setText("")
-
-    def _start_previews(self) -> None:
-        self.config.cam1_by_id = str(self.cam1.currentData() or "")
-        self.config.cam2_by_id = str(self.cam2.currentData() or "")
-        if not self.enable_previews:
-            self.preview1.setText("Preview disabled in tests")
-            self.preview2.setText("Preview disabled in tests")
-            return
-        self.preview1.start(self.config.cam1_by_id)
-        if not getattr(self, "_second_visible", True):
-            self.preview2.stop()
-            self.preview2.setText("Not used in mono mode")
-        else:
-            self.preview2.setText("")
-            self.preview2.start(self.config.cam2_by_id)
-
-    def swap(self) -> None:
-        first = self.cam1.currentIndex()
-        self.cam1.setCurrentIndex(self.cam2.currentIndex())
-        self.cam2.setCurrentIndex(first)
-        self._start_previews()
-
-    def on_enter(self) -> None:
-        self.refresh_devices()
-
-    def validate(self) -> tuple[bool, str]:
-        self.config.camera_mode = str(self.mode.currentData() or "auto")
-        if not self.config.cam1_by_id:
-            return False, "Choose one camera to continue."
-        if self.config.camera_mode == "stereo":
-            if not self.config.cam2_by_id:
-                return False, "Choose a second camera, or switch to one camera."
-            if self.config.cam1_by_id == self.config.cam2_by_id:
-                return False, "Camera 1 and camera 2 must be different devices."
-        return True, ""
-
-    @property
-    def unresolved(self) -> bool:
-        return self.config.camera_mode == "stereo" and not self.config.cam2_by_id
-
-    def close_previews(self) -> None:
-        self.preview1.stop()
-        self.preview2.stop()
-
-
-class CalibrationPage(StepPage):
-    step = OnboardingStep.CALIBRATION
-    next_label = "Continue"
-
-    def __init__(self, paths: AppPaths, runner: Callable[[], None] | None = None) -> None:
-        super().__init__()
-        self.paths = paths
-        self.runner = runner
-        self.title.setText("Calibration")
-        self.subtitle.setText(
-            "Calibration teaches the gaze model about your screen and posture. It opens a full-screen target window."
-        )
-        self.status = QLabel("")
-        self.status.setObjectName("Muted")
-        self.body.addWidget(self.status)
-        actions = QHBoxLayout()
-        self.run_button = QPushButton("Run calibration")
-        self.run_button.setObjectName("Primary")
-        self.run_button.clicked.connect(self.run_calibration)
-        actions.addWidget(self.run_button)
-        recheck = QPushButton("Check again")
-        recheck.clicked.connect(self.refresh)
-        actions.addWidget(recheck)
-        actions.addStretch(1)
-        self.body.addLayout(actions)
-        self.body.addStretch(1)
-        self.refresh()
-
-    def refresh(self) -> None:
-        exists = self.paths.calibration_path.exists()
-        quality = ""
-        if exists:
-            try:
-                from keyboard_killer.vision.calibrator import StereoGazeModel
-
-                model = StereoGazeModel.load(self.paths.calibration_path)
-                quality = (
-                    f" · {model.camera_mode.upper()} · "
-                    f"{model.rmse_x:.0f}px / {model.rmse_y:.0f}px RMSE"
-                )
-            except Exception:
-                quality = ""
-        self.status.setText(f"CALIBRATION {'READY' if exists else 'MISSING'}{quality}")
-        self.status.setObjectName("Success" if exists else "Warning")
-
-    def run_calibration(self) -> None:
-        if self.runner is not None:
-            self.runner()
-            return
-        try:
-            subprocess.Popen([sys.executable, "-m", "keyboard_killer.main", "calibrate"])
-            self.problem.setText(
-                "Calibration opened in a separate window. Finish it here, then choose Check again."
-            )
-        except OSError as exc:
-            self.problem.setText(f"Could not start calibration: {exc}")
-
-    def on_enter(self) -> None:
-        self.refresh()
-
-    def validate(self) -> tuple[bool, str]:
-        if not self.paths.calibration_path.exists():
-            return False, "Run calibration before continuing."
-        return True, ""
 
 
 class _DownloadWorker(QThread):
@@ -599,406 +265,565 @@ class _SpeechTestWorker(QThread):
             self.failed.emit(str(exc))
 
 
-class SttPage(StepPage):
-    step = OnboardingStep.STT
+class DevicesPage(StepPage):
+    """Unified, progressive-enhancement device setup (Camera + Mic + Speech + missing permissions)."""
+
+    step = OnboardingStep.DEVICES
     next_label = "Continue"
 
-    def __init__(self, config: AppConfig, paths: AppPaths) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        paths: AppPaths,
+        report_provider: Callable[[], DoctorReport] | None = None,
+        *,
+        enable_previews: bool = True,
+    ) -> None:
         super().__init__()
         self.config = config
         self.paths = paths
-        self.title.setText("Speech")
-        self.subtitle.setText(
-            "Parakeet is the app-owned English model. It runs on the CPU and is the only speech engine."
-        )
-        form = QFormLayout()
+        self.report_provider = report_provider
+        self.enable_previews = enable_previews
+        self._report: DoctorReport | None = None
+        self._dl_worker: _DownloadWorker | None = None
+        self._mic_worker: _MicCheckWorker | None = None
+        self._speech_worker: _SpeechTestWorker | None = None
+
+        self.title.setText("Devices")
+        self.subtitle.setText("Confirm your camera and microphone look and sound right.")
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        inner = QWidget()
+        col = QVBoxLayout(inner)
+        col.setContentsMargins(0, 0, 8, 0)
+        col.setSpacing(12)
+        scroll.setWidget(inner)
+        self.body.addWidget(scroll, 1)
+
+        # ---- Camera Card (progressive enhancement: stereo controls only when >=2 cameras)
+        cam_card = Card()
+        cam_card.layout.addWidget(eyebrow("Camera"))
+        cam_row = QHBoxLayout()
+        cam_row.setSpacing(16)
+        self.preview1 = CameraPreview("cam1")
+        self.preview1.setFixedSize(200, 120)
+        self.preview2 = CameraPreview("cam2")
+        self.preview2.setFixedSize(200, 120)
+        self.preview2.setVisible(False)
+        previews = QVBoxLayout()
+        previews.setSpacing(8)
+        previews.addWidget(self.preview1)
+        previews.addWidget(self.preview2)
+        previews.addStretch(1)
+        cam_row.addLayout(previews)
+
+        cam_controls = QFormLayout()
+        cam_controls.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        cam_controls.setVerticalSpacing(10)
+
+        self.mode_label = QLabel("Setup")
+        self.mode = QComboBox()
+        self.mode.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.mode.addItem("Automatic", "auto")
+        self.mode.addItem("One camera", "mono")
+        self.mode.addItem("Two cameras (stereo)", "stereo")
+        idx = self.mode.findData(self.config.camera_mode)
+        self.mode.setCurrentIndex(idx if idx >= 0 else 0)
+        self.mode.currentIndexChanged.connect(self.refresh_devices)
+        cam_controls.addRow(self.mode_label, self.mode)
+
+        self.cam1 = QComboBox()
+        self.cam1.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.cam1.currentIndexChanged.connect(self._on_camera_changed)
+        cam_controls.addRow("Camera", self.cam1)
+
+        self.cam2_label = QLabel("Second camera")
+        self.cam2 = QComboBox()
+        self.cam2.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.cam2.currentIndexChanged.connect(self._on_camera_changed)
+        cam_controls.addRow(self.cam2_label, self.cam2)
+
+        self.swap_button = QPushButton("Swap cameras")
+        self.swap_button.clicked.connect(self.swap)
+        cam_controls.addRow("", self.swap_button)
+
+        self.cam_hint = QLabel("")
+        self.cam_hint.setObjectName("Muted")
+        self.cam_hint.setWordWrap(True)
+        cam_controls.addRow("", self.cam_hint)
+
+        cam_row.addLayout(cam_controls, 1)
+        cam_card.layout.addLayout(cam_row)
+        col.addWidget(cam_card)
+
+        # ---- Voice & Speech Card
+        voice_card = Card()
+        voice_card.layout.addWidget(eyebrow("Microphone & speech"))
+        mic_row = QHBoxLayout()
+        mic_row.setSpacing(8)
         self.mic = QComboBox()
-        self.mic.setMinimumWidth(280)
+        self.mic.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self._populate_microphones()
         self.mic.currentIndexChanged.connect(self._save_microphone)
-        form.addRow("Microphone", self.mic)
-        self.body.addLayout(form)
+        mic_row.addWidget(self.mic, 1)
+        self.check_button = QPushButton("Check mic")
+        self.check_button.clicked.connect(self.check_mic)
+        mic_row.addWidget(self.check_button)
+        self.test_button = QPushButton("Test speech")
+        self.test_button.clicked.connect(self.test_speech)
+        mic_row.addWidget(self.test_button)
+        voice_card.layout.addLayout(mic_row)
 
-        self.body.addWidget(eyebrow("LIVE MIC CHECK"))
         self.level = QProgressBar()
         self.level.setRange(0, 100)
         self.level.setValue(0)
+        self.level.setFixedHeight(4)
         self.level.setTextVisible(False)
-        self.body.addWidget(self.level)
-        self.level_note = QLabel("IDLE · CHECK MIC OR TEST TRANSCRIPTION")
-        self.level_note.setObjectName("Mono")
-        self.body.addWidget(self.level_note)
+        voice_card.layout.addWidget(self.level)
 
-        test_actions = QHBoxLayout()
-        self.check_button = QPushButton("CHECK MIC")
-        self.check_button.clicked.connect(self.check_mic)
-        test_actions.addWidget(self.check_button)
-        self.test_button = QPushButton("TEST TRANSCRIPTION")
-        self.test_button.setObjectName("Primary")
-        self.test_button.clicked.connect(self.test_speech)
-        test_actions.addWidget(self.test_button)
-        test_actions.addStretch(1)
-        self.body.addLayout(test_actions)
+        self.voice_note = QLabel("")
+        self.voice_note.setObjectName("Muted")
+        self.voice_note.setWordWrap(True)
+        self.voice_note.setVisible(False)
+        voice_card.layout.addWidget(self.voice_note)
 
-        self.transcript = QLabel("No speech test yet.")
-        self.transcript.setObjectName("Heading")
-        self.transcript.setWordWrap(True)
-        self.body.addWidget(self.transcript)
-        self.test_detail = QLabel("")
-        self.test_detail.setObjectName("Mono")
-        self.test_detail.setWordWrap(True)
-        self.body.addWidget(self.test_detail)
+        voice_card.layout.addWidget(divider())
 
-        self.status = QLabel("")
-        self.status.setWordWrap(True)
-        self.body.addWidget(self.status)
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 100)
-        self.progress.setVisible(False)
-        self.body.addWidget(self.progress)
-        actions = QHBoxLayout()
-        self.download_button = QPushButton("Download model")
+        stt_row = QHBoxLayout()
+        self.stt_status = QLabel("Local speech model")
+        self.stt_status.setWordWrap(True)
+        stt_row.addWidget(self.stt_status, 1)
+        self.download_button = QPushButton("Download (630 MB)")
         self.download_button.setObjectName("Primary")
-        self.download_button.clicked.connect(self.download)
-        actions.addWidget(self.download_button)
-        actions.addStretch(1)
-        self.body.addLayout(actions)
-        self.body.addStretch(1)
-        self._worker: _DownloadWorker | None = None
-        self._test_worker: _SpeechTestWorker | None = None
-        self._mic_worker: _MicCheckWorker | None = None
+        self.download_button.clicked.connect(self.download_model)
+        stt_row.addWidget(self.download_button)
+        voice_card.layout.addLayout(stt_row)
+
+        self.dl_progress = QProgressBar()
+        self.dl_progress.setRange(0, 100)
+        self.dl_progress.setFixedHeight(4)
+        self.dl_progress.setTextVisible(False)
+        self.dl_progress.setVisible(False)
+        voice_card.layout.addWidget(self.dl_progress)
+        col.addWidget(voice_card)
+
+        # ---- Permissions Card (progressive: ONLY shown if something actually needs attention!)
+        self.perm_card = Card(subtle=True)
+        self.perm_card.layout.addWidget(eyebrow("Permissions needed"))
+        self.perm_rows = QVBoxLayout()
+        self.perm_rows.setSpacing(6)
+        self.perm_card.layout.addLayout(self.perm_rows)
+        perm_recheck = QPushButton("Check again")
+        perm_recheck.clicked.connect(self.refresh_permissions)
+        self.perm_card.layout.addWidget(perm_recheck, 0, Qt.AlignmentFlag.AlignLeft)
+        self.perm_card.setVisible(False)
+        col.addWidget(self.perm_card)
+        col.addStretch(1)
+
         self._level_timer = QTimer(self)
         self._level_timer.setInterval(50)
         self._level_timer.timeout.connect(self._level_tick)
-        self.refresh()
+
+        self.refresh_devices()
+        self.refresh_stt()
 
     def _populate_microphones(self) -> None:
+        self.mic.blockSignals(True)
         self.mic.clear()
         self.mic.addItem("System default", None)
         for device in input_devices():
             self.mic.addItem(device.name, device.index)
         current = self.config.audio_device
-        if current is None:
-            return
-        index = self.mic.findData(current)
-        if index < 0 and isinstance(current, str):
-            index = self.mic.findText(current)
-        if index >= 0:
-            self.mic.setCurrentIndex(index)
+        if current is not None:
+            index = self.mic.findData(current)
+            if index < 0 and isinstance(current, str):
+                index = self.mic.findText(current)
+            if index >= 0:
+                self.mic.setCurrentIndex(index)
+        self.mic.blockSignals(False)
 
     def _save_microphone(self, _index: int) -> None:
         self.config.audio_device = self.mic.currentData()
         self.config.save(self.paths.settings_path)
 
+    def refresh_devices(self) -> None:
+        devices = discover_v4l_by_id()
+        has_two = len(devices) >= 2
+        self.config.camera_mode = str(self.mode.currentData() or "auto") if has_two else "mono"
+        show_stereo = has_two and self.config.camera_mode != "mono"
+        self._second_visible = show_stereo
+
+        # Progressive enhancement: hide stereo/mode clutter completely when only 1 camera exists
+        self.mode_label.setVisible(has_two)
+        self.mode.setVisible(has_two)
+        self.cam2_label.setVisible(show_stereo)
+        self.cam2.setVisible(show_stereo)
+        self.swap_button.setVisible(show_stereo)
+        self.preview2.setVisible(show_stereo)
+
+        for combo, current in ((self.cam1, self.config.cam1_by_id), (self.cam2, self.config.cam2_by_id)):
+            combo.blockSignals(True)
+            combo.clear()
+            if not devices:
+                combo.addItem("No camera detected", "")
+            for device in devices:
+                combo.addItem(friendly_camera_name(device), device)
+            index = combo.findData(current)
+            if index < 0 and current and not devices:
+                combo.addItem(friendly_camera_name(current), current)
+                index = combo.count() - 1
+            elif index < 0 and devices:
+                # Auto-pick first available (or second for cam2)
+                index = 1 if (combo is self.cam2 and len(devices) >= 2) else 0
+            combo.setCurrentIndex(max(0, index))
+            combo.setEnabled(show_stereo if combo is self.cam2 else bool(devices or current))
+            combo.blockSignals(False)
+
+        if not devices and not self.config.cam1_by_id:
+            self.cam_hint.setText("Connect a webcam to enable gaze tracking.")
+        elif not has_two:
+            self.cam_hint.setText("Using 1 camera. Plug in a second camera anytime for stereo tracking.")
+        else:
+            self.cam_hint.setText("")
+
+        self._on_camera_changed()
+
+    def _on_camera_changed(self) -> None:
+        self.config.cam1_by_id = str(self.cam1.currentData() or "")
+        self.config.cam2_by_id = str(self.cam2.currentData() or "") if self._second_visible else ""
+        if not self.enable_previews:
+            self.preview1.setText("Camera ready" if self.config.cam1_by_id else "No camera")
+            return
+        self.preview1.start(self.config.cam1_by_id)
+        if self._second_visible and self.config.cam2_by_id:
+            self.preview2.start(self.config.cam2_by_id)
+        else:
+            self.preview2.stop()
+
+    def swap(self) -> None:
+        first = self.cam1.currentIndex()
+        self.cam1.setCurrentIndex(self.cam2.currentIndex())
+        self.cam2.setCurrentIndex(first)
+        self._on_camera_changed()
+
+    def refresh_stt(self) -> None:
+        report = stt_report(self.config, paths=self.paths)
+        ready = report.get("selected") == "parakeet"
+        if ready:
+            self.stt_status.setText("Local speech model ready")
+            self.stt_status.setObjectName("Success")
+        else:
+            self.stt_status.setText("Local speech model required (630 MB, runs offline)")
+            self.stt_status.setObjectName("Warning")
+        self.stt_status.style().unpolish(self.stt_status)
+        self.stt_status.style().polish(self.stt_status)
+        self.download_button.setVisible(not ready)
+        self.test_button.setEnabled(ready)
+
+    def refresh_permissions(self) -> None:
+        while self.perm_rows.count():
+            item = self.perm_rows.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        try:
+            report = (
+                self.report_provider()
+                if self.report_provider is not None
+                else collect_doctor(check_providers=False)
+            )
+        except Exception:
+            self.perm_card.setVisible(False)
+            return
+        self._report = report
+        missing = [
+            (name, info)
+            for name, info in report.permissions.items()
+            if info.get("state") in ("denied", "needs_restart")
+        ]
+        for name, info in missing:
+            title = name.replace("_", " ").capitalize()
+            detail = info.get("action") or info.get("detail") or info.get("state", "")
+            lbl = QLabel(f"{title}: {detail}")
+            lbl.setWordWrap(True)
+            lbl.setObjectName("Muted")
+            self.perm_rows.addWidget(lbl)
+        self.perm_card.setVisible(bool(missing))
+
+    def download_model(self) -> None:
+        if self._dl_worker is not None:
+            return
+        self.dl_progress.setVisible(True)
+        self.dl_progress.setValue(0)
+        self.download_button.setEnabled(False)
+        self.download_button.setText("Downloading…")
+        worker = _DownloadWorker(self)
+        worker.progress.connect(lambda p: self.dl_progress.setValue(int(p.percent)))
+        worker.done.connect(self._on_dl_done)
+        worker.failed.connect(self._on_dl_failed)
+        self._dl_worker = worker
+        worker.start()
+
+    def _on_dl_done(self, _receipt: object) -> None:
+        self._dl_worker = None
+        self.dl_progress.setVisible(False)
+        self.download_button.setEnabled(True)
+        self.download_button.setText("Download (630 MB)")
+        self.refresh_stt()
+        self.set_problem("")
+
+    def _on_dl_failed(self, message: str) -> None:
+        self._dl_worker = None
+        self.dl_progress.setVisible(False)
+        self.download_button.setEnabled(True)
+        self.download_button.setText("Retry download")
+        self.set_problem(f"Download failed: {message}")
+
     def _worker_recorder(self):
-        for worker in (self._test_worker, self._mic_worker):
+        for worker in (self._speech_worker, self._mic_worker):
             if worker is not None and worker.isRunning():
                 return worker.recorder
         return None
 
-    def _start_level(self) -> None:
-        self.level.setValue(0)
-        self._level_timer.start()
-
-    def _stop_level(self) -> None:
-        self._level_timer.stop()
-        self.level.setValue(0)
-
     def _level_tick(self) -> None:
-        recorder = self._worker_recorder()
-        if recorder is None:
-            self._stop_level()
+        rec = self._worker_recorder()
+        if rec is None:
+            self._level_timer.stop()
+            self.level.setValue(0)
             return
-        level = min(1.0, float(recorder.level) * 12.0)
-        self.level.setValue(int(level * 100))
+        self.level.setValue(min(100, int(float(rec.level) * 1200.0)))
 
     def check_mic(self) -> None:
         if self._mic_worker is not None and self._mic_worker.isRunning():
             return
         self.check_button.setEnabled(False)
         self.test_button.setEnabled(False)
-        self.level_note.setText("LISTENING · 1.5 SECONDS")
-        self.transcript.setText("No speech test yet.")
+        self.voice_note.setText("Listening for 1.5 seconds…")
+        self.voice_note.setVisible(True)
         worker = _MicCheckWorker(self.mic.currentData())
         worker.done.connect(self._on_mic_done)
         worker.failed.connect(self._on_mic_failed)
         self._mic_worker = worker
-        self._start_level()
+        self._level_timer.start()
         worker.start()
 
+    def _on_mic_done(self, level: MicLevel) -> None:
+        self._level_timer.stop()
+        self.level.setValue(0)
+        self.check_button.setEnabled(True)
+        self.refresh_stt()
+        self.voice_note.setVisible(True)
+        if level.heard:
+            self.voice_note.setText("Microphone heard your voice clearly.")
+            self.voice_note.setObjectName("Success")
+        else:
+            self.voice_note.setText("No audio detected — try picking another microphone.")
+            self.voice_note.setObjectName("Warning")
+        self.voice_note.style().unpolish(self.voice_note)
+        self.voice_note.style().polish(self.voice_note)
+
+    def _on_mic_failed(self, message: str) -> None:
+        self._level_timer.stop()
+        self.level.setValue(0)
+        self.check_button.setEnabled(True)
+        self.refresh_stt()
+        self.voice_note.setVisible(True)
+        self.voice_note.setText(f"Microphone error: {message}")
+        self.voice_note.setObjectName("Warning")
+
     def test_speech(self) -> None:
-        if self._test_worker is not None and self._test_worker.isRunning():
-            return
-        report = stt_report(self.config, paths=self.paths)
-        if report.get("selected") != "parakeet":
-            self.level_note.setText("MODEL NOT READY · DOWNLOAD IT FIRST")
+        if self._speech_worker is not None and self._speech_worker.isRunning():
             return
         self.check_button.setEnabled(False)
         self.test_button.setEnabled(False)
-        self.transcript.setText("Listening…")
-        self.test_detail.setText("")
-        self.level_note.setText("LOADING PARAKEET…")
+        self.voice_note.setVisible(True)
+        self.voice_note.setText("Preparing speech engine…")
         worker = _SpeechTestWorker(self.config, self.paths)
-        worker.stage.connect(self._on_test_stage)
-        worker.done.connect(self._on_test_done)
-        worker.failed.connect(self._on_test_failed)
-        self._test_worker = worker
-        self._start_level()
-        worker.start()
-
-    def _on_test_stage(self, stage: str) -> None:
-        if stage == "loading":
-            self.level_note.setText("LOADING PARAKEET…")
-        elif stage == "recording":
-            self.transcript.setText("Listening…")
-            self.level_note.setText("RECORDING · SPEAK NOW")
-        elif stage == "transcribing":
-            self.level_note.setText("TRANSCRIBING…")
-
-    def _on_test_done(self, result: object) -> None:
-        self._stop_level()
-        self.check_button.setEnabled(True)
-        self.test_button.setEnabled(True)
-        transcript = getattr(result, "transcript", "")
-        self.transcript.setText(f"“{transcript}”" if transcript else "No words recognized.")
-        self.test_detail.setText(
-            f"{getattr(result, 'latency_ms', 0):.0f} MS · "
-            f"PEAK {getattr(result, 'peak', 0):.3f} · "
-            f"{getattr(result, 'engine', 'parakeet')}"
-        )
-        self.level_note.setText(
-            "HEARD · LOCAL PARAKEET" if transcript else "NO SPEECH DETECTED"
-        )
-
-    def _on_test_failed(self, message: str) -> None:
-        self._stop_level()
-        self.check_button.setEnabled(True)
-        self.test_button.setEnabled(True)
-        self.level_note.setText("TEST FAILED")
-        self.test_detail.setText(message)
-        self.transcript.setText("No speech test yet.")
-
-    def _on_mic_done(self, level: object) -> None:
-        self._stop_level()
-        self.check_button.setEnabled(True)
-        self.test_button.setEnabled(True)
-        peak = getattr(level, "peak", 0.0)
-        rms = getattr(level, "rms", 0.0)
-        self.level_note.setText(
-            (
-                f"HEARD · PEAK {peak:.3f} · RMS {rms:.3f}"
-                if getattr(level, "heard", False)
-                else "NO SIGNAL · TRY ANOTHER MICROPHONE"
+        worker.stage.connect(
+            lambda s: self.voice_note.setText(
+                "Speak now (4 seconds)…" if s == "recording" else "Transcribing…" if s == "transcribing" else "Loading speech model…"
             )
         )
-
-    def _on_mic_failed(self, message: str) -> None:
-        self._stop_level()
-        self.check_button.setEnabled(True)
-        self.test_button.setEnabled(True)
-        self.level_note.setText(f"MIC FAILED · {message}")
-
-    def _stop_tests(self) -> None:
-        for worker in (self._test_worker, self._mic_worker):
-            if worker is not None and worker.isRunning():
-                worker.recorder.stop()
-                worker.wait(2500)
-        self._stop_level()
-
-    def hideEvent(self, event) -> None:  # noqa: N802
-        self._stop_tests()
-        super().hideEvent(event)
-
-    def refresh(self) -> None:
-        report = stt_report(self.config, paths=self.paths)
-        parakeet = report.get("parakeet", {})
-        state = parakeet.get("state", "unknown") if isinstance(parakeet, dict) else "unknown"
-        self.status.setText(f"Parakeet: {state} · {report.get('parakeet', {}).get('path', '')}")
-        self.status.setObjectName("Success" if state == "ready" else "Warning")
-        self.download_button.setEnabled(state != "ready")
-        self.download_button.setText("Model ready" if state == "ready" else "Download model (630 MB)")
-        running = self._test_worker is not None and self._test_worker.isRunning()
-        self.test_button.setEnabled(state == "ready" and not running)
-
-    def download(self) -> None:
-        if self._worker is not None:
-            return
-        self.progress.setVisible(True)
-        self.progress.setValue(0)
-        self.download_button.setEnabled(False)
-        worker = _DownloadWorker(self)
-        worker.progress.connect(self._on_progress)
-        worker.done.connect(self._on_done)
-        worker.failed.connect(self._on_failed)
-        self._worker = worker
+        worker.done.connect(self._on_speech_done)
+        worker.failed.connect(self._on_mic_failed)
+        self._speech_worker = worker
+        self._level_timer.start()
         worker.start()
 
-    def _on_progress(self, update: DownloadProgress) -> None:
-        self.progress.setValue(int(update.percent))
+    def _on_speech_done(self, result: object) -> None:
+        self._level_timer.stop()
+        self.level.setValue(0)
+        self.check_button.setEnabled(True)
+        self.refresh_stt()
+        transcript = getattr(result, "transcript", "")
+        self.voice_note.setVisible(True)
+        if transcript:
+            self.voice_note.setText(f"Heard: “{transcript}”")
+            self.voice_note.setObjectName("Success")
+        else:
+            self.voice_note.setText("No words recognized — try speaking closer to the mic.")
+            self.voice_note.setObjectName("Warning")
+        self.voice_note.style().unpolish(self.voice_note)
+        self.voice_note.style().polish(self.voice_note)
 
-    def _on_done(self, _receipt: object) -> None:
-        self._worker = None
-        self.refresh()
-        self.progress.setVisible(False)
-        self.problem.setText("")
-
-    def _on_failed(self, message: str) -> None:
-        self._worker = None
-        self.download_button.setEnabled(True)
-        self.progress.setVisible(False)
-        self.problem.setText(f"Download failed: {message}")
+    def on_enter(self) -> None:
+        self.refresh_devices()
+        self.refresh_stt()
+        self.refresh_permissions()
 
     def validate(self) -> tuple[bool, str]:
+        if not self.config.cam1_by_id:
+            return False, "Connect and select a camera to continue."
+        if self._second_visible and self.config.camera_mode == "stereo":
+            if not self.config.cam2_by_id or self.config.cam1_by_id == self.config.cam2_by_id:
+                return False, "Choose two different cameras, or switch to one camera."
         report = stt_report(self.config, paths=self.paths)
         if report.get("selected") != "parakeet":
-            return False, "Download the pinned Parakeet model to continue."
+            return False, "Download the local speech model to continue."
         return True, ""
+
+    @property
+    def unresolved(self) -> bool:
+        if self._report is None:
+            return False
+        return any(
+            info.get("state") in ("denied", "needs_restart")
+            for info in self._report.permissions.values()
+        )
+
+    def close_resources(self) -> None:
+        self.preview1.stop()
+        self.preview2.stop()
+        self._level_timer.stop()
+        for worker in (self._speech_worker, self._mic_worker):
+            if worker is not None and worker.isRunning():
+                worker.recorder.stop()
+                worker.wait(2000)
+        if self._dl_worker is not None and self._dl_worker.isRunning():
+            self._dl_worker.wait(1000)
+
+
+class CalibrationPage(StepPage):
+    step = OnboardingStep.CALIBRATION
+    next_label = "Continue"
+
+    def __init__(self, paths: AppPaths, runner: Callable[[], None] | None = None) -> None:
+        super().__init__()
+        self.paths = paths
+        self.runner = runner
+        self._proc: subprocess.Popen[bytes] | None = None
+
+        self.title.setText("Calibrate eye tracking")
+        self.subtitle.setText(
+            "Follow the dots on screen so Keyboard-Killer learns your camera position. "
+            "Multiple monitors and head movement are handled automatically."
+        )
+
+        card = Card()
+        self.status = QLabel("")
+        self.status.setObjectName("Heading")
+        card.layout.addWidget(self.status)
+        self.hint = QLabel("Takes about a minute. Press Escape anytime to cancel.")
+        self.hint.setObjectName("Muted")
+        self.hint.setWordWrap(True)
+        card.layout.addWidget(self.hint)
+
+        actions = QHBoxLayout()
+        self.run_button = QPushButton("Start calibration")
+        self.run_button.setObjectName("Primary")
+        self.run_button.clicked.connect(self.run_calibration)
+        actions.addWidget(self.run_button)
+        actions.addStretch(1)
+        card.layout.addLayout(actions)
+
+        self.body.addWidget(card)
+        self.body.addStretch(1)
+
+        self._poll = QTimer(self)
+        self._poll.setInterval(400)
+        self._poll.timeout.connect(self._check_proc)
+        self.refresh()
+
+    def refresh(self) -> None:
+        exists = self.paths.calibration_path.exists()
+        if exists:
+            self.status.setText("Calibrated")
+            self.status.setObjectName("Success")
+            self.run_button.setText("Recalibrate")
+            self.run_button.setObjectName("")
+            self.hint.setText("Your gaze calibration is saved. You can recalibrate anytime from Home or Settings.")
+        else:
+            self.status.setText("Not calibrated yet")
+            self.status.setObjectName("Muted")
+            self.run_button.setText("Start calibration")
+            self.run_button.setObjectName("Primary")
+            self.hint.setText("Opens a full-screen calibration window. You will return here automatically when finished.")
+        for w in (self.status, self.run_button):
+            w.style().unpolish(w)
+            w.style().polish(w)
+
+    def run_calibration(self) -> None:
+        if self.runner is not None:
+            self.runner()
+            self.refresh()
+            return
+        if self._proc is not None and self._proc.poll() is None:
+            return
+        try:
+            self._proc = subprocess.Popen([sys.executable, "-m", "keyboard_killer.main", "calibrate"])
+            self.run_button.setEnabled(False)
+            self.run_button.setText("Calibrating…")
+            self.set_problem("")
+            self._poll.start()
+        except OSError as exc:
+            self.set_problem(f"Could not start calibration: {exc}")
+
+    def _check_proc(self) -> None:
+        if self._proc is None or self._proc.poll() is not None:
+            self._poll.stop()
+            self._proc = None
+            self.run_button.setEnabled(True)
+            self.refresh()
 
     def on_enter(self) -> None:
         self.refresh()
 
-    def close_worker(self) -> None:
-        self._stop_tests()
-        if self._worker is not None:
-            self._worker.wait(1000)
-
-
-class ProviderPage(StepPage):
-    step = OnboardingStep.PROVIDER
-    next_label = "Continue"
-    skippable = True
-
-    def __init__(self, config: AppConfig, paths: AppPaths) -> None:
-        super().__init__()
-        self.config = config
-        self.paths = paths
-        self.title.setText("Connect an AI (optional)")
-        self.subtitle.setText(
-            "Pointer and voice commands work without an AI. A provider adds free-form terminal/browser planning."
-        )
-        form = QFormLayout()
-        self.preset = QComboBox()
-        for item in load_presets():
-            self.preset.addItem(item.name, item.id)
-        self.model = QLineEdit(self.config.llm_model)
-        self.model.setPlaceholderText("Provider default")
-        self.key = QLineEdit()
-        self.key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.key.setPlaceholderText("Stored in the OS keychain")
-        form.addRow("Endpoint", self.preset)
-        form.addRow("Model", self.model)
-        form.addRow("API key", self.key)
-        self.body.addLayout(form)
-        actions = QHBoxLayout()
-        save = QPushButton("Save key")
-        save.clicked.connect(self.save_key)
-        actions.addWidget(save)
-        test = QPushButton("Test connection")
-        test.clicked.connect(self.test)
-        actions.addWidget(test)
-        self.acp = QPushButton("Use an ACP agent")
-        self.acp.clicked.connect(self.acp_status)
-        actions.addWidget(self.acp)
-        actions.addStretch(1)
-        self.body.addLayout(actions)
-        self.result = QLabel("Optional: skip for now.")
-        self.result.setObjectName("Muted")
-        self.result.setWordWrap(True)
-        self.body.addWidget(self.result)
-        self.body.addStretch(1)
-
-    def save_key(self) -> None:
-        if not keyring_available():
-            self.result.setText("OS keychain unavailable; install the keyring backend.")
-            return
-        key = self.key.text().strip()
-        if not key:
-            self.result.setText("Enter a key first.")
-            return
-        preset = str(self.preset.currentData())
-        set_secret(preset, key)
-        self.config.llm_provider = "openai_compat"
-        self.config.llm_preset = preset
-        self.config.llm_model = self.model.text().strip()
-        self.config.save(self.paths.settings_path)
-        self.key.clear()
-        self.result.setText(f"Stored {preset} key in the OS keychain and saved the model.")
-
-    def test(self) -> None:
-        preset = str(self.preset.currentData())
-        provider = OpenAICompatProvider(preset, self.model.text().strip())
-        status = provider.status()
-        self.result.setText(f"{provider.display_name}: {status.state.value} — {status.detail}")
-        self.result.setObjectName("Success" if status.ready else "Warning")
-
-    def acp_status(self) -> None:
-        try:
-            installed = [spec for spec in fetch_registry() if spec.installed]
-        except Exception as exc:
-            self.result.setText(f"Could not read the ACP registry: {exc}")
-            return
-        names = ", ".join(spec.name for spec in installed[:6]) or "none detected"
-        self.result.setText(f"Installed ACP agents: {names}. Choose one in Settings.")
-
     def validate(self) -> tuple[bool, str]:
-        return True, ""
-
-
-class PracticePage(StepPage):
-    step = OnboardingStep.PRACTICE
-    next_label = "Continue"
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.title.setText("Practice")
-        self.subtitle.setText(
-            "Look at the target, say \u201cclick\u201d. This card simulates the click so the first live action is not a surprise."
-        )
-        self.target = QPushButton("Click me")
-        self.target.setObjectName("Primary")
-        self.target.setMinimumSize(240, 140)
-        self.target.clicked.connect(self.practice)
-        self.body.addWidget(self.target, 0, Qt.AlignmentFlag.AlignCenter)
-        self.result = QLabel("Waiting for a practice click.")
-        self.result.setObjectName("Muted")
-        self.result.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.body.addWidget(self.result)
-        self.body.addStretch(1)
-        self._done = False
-
-    def practice(self) -> None:
-        self._done = True
-        self.result.setText("Practice click landed. You are ready to try the desktop.")
-        self.result.setObjectName("Success")
-
-    def validate(self) -> tuple[bool, str]:
-        if not self._done:
-            return False, "Try the practice click once."
+        if not self.paths.calibration_path.exists():
+            return False, "Complete calibration before continuing."
         return True, ""
 
 
 class ReadyPage(StepPage):
     step = OnboardingStep.READY
-    next_label = "Finish"
+    next_label = "Start listening"
 
-    def __init__(self, paths: AppPaths) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.paths = paths
-        self.title.setText("You're ready")
+        self.title.setText("You're all set")
         self.subtitle.setText(
-            "Keyboard-Killer lives in the tray. Pause any time; quit from the tray menu."
+            "Look at any button, link, or field and say “click”, “scroll down”, or “type …”."
         )
-        card = QFrame()
-        card.setObjectName("Card")
-        layout = QVBoxLayout(card)
-        layout.addWidget(QLabel("Listening state is shown in the tray and the status pill."))
-        layout.addWidget(QLabel(f"Settings: {self.paths.settings_path}"))
-        layout.addWidget(QLabel(f"History: {self.paths.history_db_path}"))
+        card = Card()
+        for text in (
+            "Move naturally — head movement and multiple screens are tracked automatically.",
+            "Say “recenter gaze” if you ever bump your camera.",
+            "Pause or quit anytime from the menu bar icon.",
+        ):
+            lbl = QLabel(text)
+            lbl.setWordWrap(True)
+            card.layout.addWidget(lbl)
         self.body.addWidget(card)
         self.body.addStretch(1)
 
 
-class OnboardingWindow(QDialog):
+class OnboardingWidget(QWidget):
+    """Single-column, distraction-free setup widget (embeds directly inside MainWindow)."""
+
+    completed = Signal()
+    cancelled = Signal()
+
     def __init__(
         self,
         *,
@@ -1008,73 +833,60 @@ class OnboardingWindow(QDialog):
         report_provider: Callable[[], DoctorReport] | None = None,
         enable_previews: bool = True,
         calibration_runner: Callable[[], None] | None = None,
+        parent: QWidget | None = None,
     ) -> None:
-        super().__init__()
-        load_bundled_fonts()
+        super().__init__(parent)
         self.paths = paths or current_paths()
         self.config = config or AppConfig.load(self.paths.settings_path)
         self.flow = flow or OnboardingFlow(self.paths)
-        self.setWindowTitle("Set up Keyboard-Killer")
-        self.resize(940, 640)
+
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(32, 28, 32, 24)
+
+        column = QWidget()
+        column.setMinimumWidth(580)
+        column.setMaximumWidth(680)
+        layout = QVBoxLayout(column)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(16)
+
+        # Slim top header: step indicator + thin 4px progress bar (no second sidebar!)
+        top = QHBoxLayout()
+        self.step_label = QLabel("")
+        self.step_label.setObjectName("Muted")
+        top.addWidget(self.step_label)
+        top.addStretch(1)
+        layout.addLayout(top)
+
+        self.progress = QProgressBar()
+        self.progress.setRange(0, len(STEPS) - 1)
+        self.progress.setFixedHeight(4)
+        self.progress.setTextVisible(False)
+        layout.addWidget(self.progress)
 
         self.stack = QStackedWidget()
         self.pages: dict[OnboardingStep, StepPage] = {
             OnboardingStep.WELCOME: WelcomePage(),
-            OnboardingStep.PERMISSIONS: PermissionsPage(
-                report_provider, auto_screen=enable_previews
-            ),
-            OnboardingStep.CAMERAS: CamerasPage(
-                self.config, self.paths, enable_previews=enable_previews
+            OnboardingStep.DEVICES: DevicesPage(
+                self.config,
+                self.paths,
+                report_provider=report_provider,
+                enable_previews=enable_previews,
             ),
             OnboardingStep.CALIBRATION: CalibrationPage(self.paths, calibration_runner),
-            OnboardingStep.STT: SttPage(self.config, self.paths),
-            OnboardingStep.PROVIDER: ProviderPage(self.config, self.paths),
-            OnboardingStep.PRACTICE: PracticePage(),
-            OnboardingStep.READY: ReadyPage(self.paths),
+            OnboardingStep.READY: ReadyPage(),
         }
         for step in STEPS:
             self.stack.addWidget(self.pages[step])
-
-        root = QHBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        side = QFrame()
-        side.setObjectName("Sidebar")
-        side.setFixedWidth(224)
-        side_layout = QVBoxLayout(side)
-        side_layout.setContentsMargins(18, 22, 18, 18)
-        mark = QLabel("KEYBOARD-KILLER")
-        mark.setObjectName("Wordmark")
-        side_layout.addWidget(mark)
-        side_layout.addWidget(eyebrow("SETUP"))
-        self.step_list = QListWidget()
-        self.step_list.setObjectName("Nav")
-        self.step_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.step_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        self.step_list.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        for item in STEPS:
-            self.step_list.addItem(item.value.replace("stt", "speech").replace("provider", "ai provider").title())
-        side_layout.addWidget(self.step_list, 1)
-        root.addWidget(side)
-        right = QWidget()
-        right.setObjectName("Content")
-        layout = QVBoxLayout(right)
-        layout.setContentsMargins(32, 22, 32, 22)
-        root.addWidget(right, 1)
-        self.progress = QProgressBar()
-        self.progress.setRange(0, len(STEPS) - 1)
-        self.progress.setTextVisible(False)
-        self.progress.setFixedHeight(4)
-        layout.addWidget(self.progress)
-        self.step_label = QLabel("")
-        self.step_label.setObjectName("Mono")
-        layout.addWidget(self.step_label)
         layout.addWidget(self.stack, 1)
 
         footer = QHBoxLayout()
         self.back_button = QPushButton("Back")
+        self.back_button.setObjectName("Ghost")
         self.back_button.clicked.connect(self.back)
         footer.addWidget(self.back_button)
-        self.skip_button = QPushButton("Skip for now")
+        self.skip_button = QPushButton("Skip")
+        self.skip_button.setObjectName("Ghost")
         self.skip_button.clicked.connect(self.skip)
         footer.addWidget(self.skip_button)
         footer.addStretch(1)
@@ -1084,23 +896,22 @@ class OnboardingWindow(QDialog):
         footer.addWidget(self.next_button)
         layout.addLayout(footer)
 
+        outer.addStretch(1)
+        outer.addWidget(column, 6)
+        outer.addStretch(1)
+
         self._show(self.flow.step)
 
     def _show(self, step: OnboardingStep) -> None:
         page = self.pages[step]
-        for candidate in self.pages.values():
-            if isinstance(candidate, CamerasPage) and candidate is not page:
-                candidate.close_previews()
+        devices_page = self.pages[OnboardingStep.DEVICES]
+        if isinstance(devices_page, DevicesPage) and page is not devices_page:
+            devices_page.close_resources()
         self.stack.setCurrentWidget(page)
         index = STEPS.index(step)
-        self.step_list.setCurrentRow(index)
-        if self.step_list.item(index) is not None:
-            self.step_list.item(index).setSelected(True)
         self.progress.setValue(index)
-        self.step_label.setText(
-            f"{STEPS.index(step) + 1:02d} / {len(STEPS):02d}  ·  {step.value.upper()}"
-        )
-        self.back_button.setEnabled(step is not OnboardingStep.WELCOME)
+        self.step_label.setText(f"Step {index + 1} of {len(STEPS)}")
+        self.back_button.setVisible(step is not OnboardingStep.WELCOME)
         self.next_button.setText(page.next_label)
         self.skip_button.setVisible(step in OPTIONAL_STEPS)
         page.on_enter()
@@ -1109,13 +920,14 @@ class OnboardingWindow(QDialog):
         page = self.pages[self.flow.step]
         ok, reason = page.validate()
         if not ok:
-            page.problem.setText(reason)
+            page.set_problem(reason)
             return
-        page.problem.setText("")
+        page.set_problem("")
         self.config.save(self.paths.settings_path)
         if self.flow.step is OnboardingStep.READY:
             self.flow.advance()
-            self.accept()
+            self.close_resources()
+            self.completed.emit()
             return
         self.flow.advance(unresolved=page.unresolved)
         self._show(self.flow.step)
@@ -1130,10 +942,59 @@ class OnboardingWindow(QDialog):
         self.flow.advance(skipped=True)
         self._show(self.flow.step)
 
+    def close_resources(self) -> None:
+        devices_page = self.pages.get(OnboardingStep.DEVICES)
+        if isinstance(devices_page, DevicesPage):
+            devices_page.close_resources()
+
+
+class OnboardingWindow(QDialog):
+    """Standalone dialog wrapper around OnboardingWidget (used by tests or direct invocation)."""
+
+    def __init__(
+        self,
+        *,
+        flow: OnboardingFlow | None = None,
+        config: AppConfig | None = None,
+        paths: AppPaths | None = None,
+        report_provider: Callable[[], DoctorReport] | None = None,
+        enable_previews: bool = True,
+        calibration_runner: Callable[[], None] | None = None,
+    ) -> None:
+        super().__init__()
+        load_bundled_fonts()
+        self.setWindowTitle("Set up Keyboard-Killer")
+        self.setWindowIcon(make_icon())
+        self.resize(740, 580)
+        self.widget = OnboardingWidget(
+            flow=flow,
+            config=config,
+            paths=paths,
+            report_provider=report_provider,
+            enable_previews=enable_previews,
+            calibration_runner=calibration_runner,
+            parent=self,
+        )
+        self.flow = self.widget.flow
+        self.config = self.widget.config
+        self.paths = self.widget.paths
+        self.stack = self.widget.stack
+        self.pages = self.widget.pages
+        self.widget.completed.connect(self.accept)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.widget)
+
+    def next(self) -> None:
+        self.widget.next()
+
+    def back(self) -> None:
+        self.widget.back()
+
+    def skip(self) -> None:
+        self.widget.skip()
+
     def closeEvent(self, event) -> None:  # noqa: N802
-        for page in self.pages.values():
-            if isinstance(page, CamerasPage):
-                page.close_previews()
-            if isinstance(page, SttPage):
-                page.close_worker()
+        self.widget.close_resources()
         super().closeEvent(event)

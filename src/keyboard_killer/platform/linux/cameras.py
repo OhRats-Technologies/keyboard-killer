@@ -2,12 +2,57 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from pathlib import Path
 
 from keyboard_killer.platform.base import CameraInfo
 
 BY_ID_DIR = Path("/dev/v4l/by-id")
+
+
+def friendly_camera_name(path_or_id: str) -> str:
+    """Turn a raw udev by-id camera string into a clean human-readable device name."""
+    if not path_or_id:
+        return "No camera"
+    raw = Path(path_or_id).name
+    raw = re.sub(r"^(?:usb|pci-[^-]+-usb-[^-]+)-", "", raw)
+    raw = re.sub(r"-video-index\d+$", "", raw)
+    # Remove noisy corporate suffixes and serial numbers
+    raw = re.sub(r"_+Co\._*Ltd\.?_+", " ", raw, flags=re.IGNORECASE)
+    raw = re.sub(r"_[0-9A-Fa-f]{6,}$", "", raw)
+    tokens = [t for t in re.split(r"[_\-\s]+", raw) if t]
+    if not tokens:
+        return Path(path_or_id).name
+    # Collapse consecutive repeated phrases (e.g. GENERAL WEBCAM GENERAL WEBCAM)
+    deduped: list[str] = []
+    i = 0
+    while i < len(tokens):
+        matched = False
+        for span in range(min(4, (len(tokens) - i) // 2), 0, -1):
+            a = [t.lower() for t in tokens[i : i + span]]
+            b = [t.lower() for t in tokens[i + span : i + 2 * span]]
+            if a == b:
+                deduped.extend(tokens[i : i + span])
+                i += 2 * span
+                matched = True
+                break
+        if not matched:
+            if not deduped or deduped[-1].lower() != tokens[i].lower():
+                deduped.append(tokens[i])
+            i += 1
+    # Drop pure hex vendor/product IDs like 046d 0825 when descriptive words remain
+    non_hex = [t for t in deduped if not re.fullmatch(r"[0-9A-Fa-f]{4}", t)]
+    words = non_hex if non_hex else deduped
+    out = []
+    for w in words:
+        if w.isupper() and len(w) <= 3:
+            out.append(w)
+        elif w.isupper() or w.islower():
+            out.append(w.capitalize())
+        else:
+            out.append(w)
+    return " ".join(out)
 
 
 def discover_v4l_by_id(root: Path = BY_ID_DIR) -> list[str]:
@@ -25,7 +70,7 @@ def list_cameras(root: Path = BY_ID_DIR) -> list[CameraInfo]:
         cameras.append(
             CameraInfo(
                 id=link.name,
-                name=link.name,
+                name=friendly_camera_name(link.name),
                 path=path,
                 capabilities={"backend": "v4l2", "by_id": True},
             )

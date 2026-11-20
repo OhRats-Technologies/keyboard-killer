@@ -1,4 +1,8 @@
-"""Resumable onboarding state machine (no Qt imports)."""
+"""Resumable onboarding state machine (no Qt imports).
+
+Streamlined 4-step flow: Welcome -> Devices -> Calibration -> Ready.
+Legacy step names saved by older versions map cleanly onto the nearest step.
+"""
 
 from __future__ import annotations
 
@@ -16,27 +20,31 @@ STATE_VERSION = 1
 
 class OnboardingStep(str, Enum):
     WELCOME = "welcome"
-    PERMISSIONS = "permissions"
-    CAMERAS = "cameras"
+    DEVICES = "devices"
     CALIBRATION = "calibration"
-    STT = "stt"
-    PROVIDER = "provider"
-    PRACTICE = "practice"
     READY = "ready"
 
 
 STEPS: tuple[OnboardingStep, ...] = (
     OnboardingStep.WELCOME,
-    OnboardingStep.PERMISSIONS,
-    OnboardingStep.CAMERAS,
+    OnboardingStep.DEVICES,
     OnboardingStep.CALIBRATION,
-    OnboardingStep.STT,
-    OnboardingStep.PROVIDER,
-    OnboardingStep.PRACTICE,
     OnboardingStep.READY,
 )
 
-OPTIONAL_STEPS = {OnboardingStep.PROVIDER}
+OPTIONAL_STEPS: set[OnboardingStep] = set()
+
+_LEGACY_STEP_MAP: dict[str, OnboardingStep] = {
+    "welcome": OnboardingStep.WELCOME,
+    "permissions": OnboardingStep.DEVICES,
+    "cameras": OnboardingStep.DEVICES,
+    "stt": OnboardingStep.DEVICES,
+    "devices": OnboardingStep.DEVICES,
+    "calibration": OnboardingStep.CALIBRATION,
+    "provider": OnboardingStep.READY,
+    "practice": OnboardingStep.READY,
+    "ready": OnboardingStep.READY,
+}
 
 
 @dataclass
@@ -75,10 +83,8 @@ class OnboardingFlow:
             return OnboardingState()
         if payload.get("version") != STATE_VERSION:
             return OnboardingState()
-        try:
-            step = OnboardingStep(payload.get("step", "welcome"))
-        except ValueError:
-            step = OnboardingStep.WELCOME
+        raw_step = str(payload.get("step", "welcome"))
+        step = _LEGACY_STEP_MAP.get(raw_step, OnboardingStep.WELCOME)
         return OnboardingState(
             step=step,
             completed=[str(item) for item in payload.get("completed", [])],

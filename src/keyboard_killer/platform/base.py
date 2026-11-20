@@ -76,6 +76,8 @@ class MonitorInfo:
     physical_height: int
     scale: float
     is_primary: bool
+    width_mm: float = 0.0
+    height_mm: float = 0.0
 
 
 @dataclass(frozen=True)

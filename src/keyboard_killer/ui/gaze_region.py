@@ -54,6 +54,8 @@ def calibration_region(path: Path, layout: DisplayLayout) -> GazeRegion:
         data = json.loads(path.read_text())
     except (OSError, ValueError, TypeError):
         return full_region(layout)
+    if str(data.get("version") or "").startswith("geo-"):
+        return full_region(layout)
     bounds = data.get("bounds") or {}
     connector = str(data.get("monitor_connector") or "")
     monitor = next((item for item in layout.monitors if item.connector == connector), None)

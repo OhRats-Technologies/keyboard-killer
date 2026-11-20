@@ -38,6 +38,20 @@ keyboard-killer run --dry-run
 
 ## Development
 
+Install locally in ~1 second from a clone (editable mode; changes apply immediately):
+
+```sh
+./scripts/install.sh --open
+```
+
+Uninstall (pass `--purge` to also delete settings, calibration, and models):
+
+```sh
+./scripts/uninstall.sh
+```
+
+Build `.deb` and AppImage packages:
+
 ```sh
 uv run python packaging/linux/build_deb.py --appimage
 ```

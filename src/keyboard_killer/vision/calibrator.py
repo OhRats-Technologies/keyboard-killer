@@ -603,6 +603,61 @@ class StereoGazeModel:
         )
 
 
+def load_gaze_model(
+    path: Path = DEFAULT_CALIB_PATH,
+    layout: DisplayLayout | None = None,
+    strip_pose_translation: bool = True,
+) -> StereoGazeModel | object:
+    """Load either a geometric (``geo-1``) or legacy ``StereoGazeModel`` calibration file.
+
+    When ``layout`` is provided for a geometric model, monitors are re-placed automatically so
+    plugged/unplugged or rearranged screens work without recalibrating.
+    """
+    data = json.loads(Path(path).read_text())
+    if str(data.get("version") or "").startswith("geo-"):
+        from keyboard_killer.vision.geo_gaze import GeoGazeModel, monitor_specs_from_layout
+
+        model = GeoGazeModel.load(Path(path))
+        if layout is not None:
+            model.with_layout(monitor_specs_from_layout(layout))
+        return model
+    return StereoGazeModel.load(Path(path), strip_pose_translation=strip_pose_translation)
+
+
+def _fit_gaze_model(
+    X: np.ndarray,
+    targets_xy: np.ndarray,
+    config: AppConfig,
+    target_mon: MonitorInfo,
+    layout: DisplayLayout,
+    groups: np.ndarray,
+    sample_weights: np.ndarray,
+) -> StereoGazeModel | object:
+    if getattr(config, "gaze_model", "geo") == "geo":
+        from keyboard_killer.vision.geo_gaze import fit_from_dataset
+
+        return fit_from_dataset(
+            X=X,
+            Y=targets_xy,
+            layout=layout,
+            ref_connector=target_mon.connector,
+            sample_weights=sample_weights,
+            cam1_by_id=config.cam1_by_id,
+            cam2_by_id=config.cam2_by_id,
+        )
+    return StereoGazeModel.fit(
+        X=X,
+        targets_xy=targets_xy,
+        cam1_by_id=config.cam1_by_id,
+        cam2_by_id=config.cam2_by_id,
+        monitor=target_mon,
+        layout=layout,
+        groups=groups,
+        sample_weights=sample_weights,
+        camera_mode=config.camera_mode,
+    )
+
+
 def _save_replay_dataset(
     dataset_path: Path,
     X: np.ndarray,
@@ -1018,17 +1073,15 @@ def _preview_and_refine_calibration(
         targs: list[tuple[float, float]],
         grps: list[int],
         wgts: list[float],
-    ) -> StereoGazeModel:
-        return StereoGazeModel.fit(
+    ) -> StereoGazeModel | object:
+        return _fit_gaze_model(
             X=np.vstack(feats),
             targets_xy=np.asarray(targs, dtype=np.float64),
-            cam1_by_id=config.cam1_by_id,
-            cam2_by_id=config.cam2_by_id,
-            monitor=target_mon,
+            config=config,
+            target_mon=target_mon,
             layout=layout,
             groups=np.asarray(grps, dtype=np.intp),
             sample_weights=np.asarray(wgts, dtype=np.float64),
-            camera_mode=config.camera_mode,
         )
 
     def _schedule_refit(done_message: str) -> None:
@@ -1045,9 +1098,12 @@ def _preview_and_refine_calibration(
             if pending_fit is not None and pending_fit.done():
                 model = pending_fit.result()
                 pending_fit = None
-                status_msg = (
-                    f"{pending_fit_msg} (Samples={model.n_train_samples}, RBF={len(model.rbf_centers)})"
+                extra_tag = (
+                    f"Monitors={len(model.monitors)}"
+                    if hasattr(model, "monitors")
+                    else f"RBF={len(model.rbf_centers)}"
                 )
+                status_msg = f"{pending_fit_msg} (Samples={model.n_train_samples}, {extra_tag})"
                 status_until = time.monotonic() + 3.5
 
             pair = stereo.read_pair()
@@ -1168,12 +1224,18 @@ def _preview_and_refine_calibration(
                 cv2.circle(canvas, (lx, ly), max(10, int(round(24 * ui_scale))), (80, 255, 120), thick + 1, cv2.LINE_AA)
                 cv2.circle(canvas, (lx, ly), 2, (80, 255, 120), -1, cv2.LINE_AA)
 
-            refit_tag = " [Fitting RBF...]" if pending_fit is not None else ""
-            banner1 = (
-                f"HYBRID HUBER + RBF MANIFOLD | Train RMSE=({model.rmse_x:.0f}, {model.rmse_y:.0f})px | "
-                f"CV RMSE=({model.cv_rmse_x:.0f}, {model.cv_rmse_y:.0f})px | "
-                f"Samples={model.n_train_samples} (RBF={len(model.rbf_centers)}){refit_tag}"
-            )
+            refit_tag = " [Fitting...]" if pending_fit is not None else ""
+            if hasattr(model, "monitors"):
+                banner1 = (
+                    f"GEOMETRIC 3D GAZE | RMSE=({model.rmse_x:.0f}, {model.rmse_y:.0f})px | "
+                    f"Monitors={len(model.monitors)} | Samples={model.n_train_samples}{refit_tag}"
+                )
+            else:
+                banner1 = (
+                    f"HYBRID HUBER + RBF MANIFOLD | Train RMSE=({model.rmse_x:.0f}, {model.rmse_y:.0f})px | "
+                    f"CV RMSE=({model.cv_rmse_x:.0f}, {model.cv_rmse_y:.0f})px | "
+                    f"Samples={model.n_train_samples} (RBF={len(model.rbf_centers)}){refit_tag}"
+                )
             banner2 = (
                 "Hold LEFT-CLICK & move mouse (look at cursor) to train | "
                 "F / RIGHT-CLICK = Spot-Fix | U = Undo | SPACE = Save & Exit | R = Full Redo"
@@ -1331,17 +1393,15 @@ def run_calibration_ui(
                             neutral_pitch = 0.5 * (o1.pitch + o2.pitch)
 
                     replay_count = len(saved_replay[0]) if saved_replay is not None else 0
-                    d1, d2 = stereo.delegates
+                    cam_ready = cam1_ok and cam2_ok
                     lines = [
-                        f"Hybrid Huber + Multi-Scale RBF Calibration on {target_mon.connector} ({target_mon.width}x{target_mon.height}) [{d1}/{d2}]",
-                        f"Camera 1: {'FACE OK' if cam1_ok else 'NO FACE'}   |   "
-                        f"{cam2_label}: {'FACE OK' if cam2_ok else 'NO FACE'}   |   "
-                        f"Saved Replay Dataset: {replay_count} samples",
-                        "Stage 1 (13 Quick Anchors): Fixate on the center pinhole of each dot.",
-                        f"Stage 2 ({int(round(sweep1_duration_sec))}s Gliding Sweep): Follow the smoothly moving green dot across the screen.",
-                        f"Stage 3 ({int(round(sweep2_duration_sec))}s Head-Motion Sweep): Slowly turn/tilt head & lean while tracking the gliding dot.",
-                        "Stage 4 (Interactive Left-Click Trainer): Hold Left-Click & follow your cursor to warp any dead spots!",
-                        "Press SPACE for Full Run | Press 'P' to Jump Straight to Left-Click Trainer (if dataset > 0) | 'X' = Wipe Replay",
+                        f"Eye Calibration · {target_mon.connector}",
+                        f"Face detected — ready to begin" if cam_ready else "Position your face in view of the camera",
+                        "1. Look at each dot on screen as it appears.",
+                        "2. Follow the gliding green dot smoothly with your eyes.",
+                        "3. Gently turn and tilt your head while keeping eyes on the dot.",
+                        "Press SPACE to start   ·   ESC to cancel"
+                        + ("   ·   P = quick refine" if replay_count > 0 else ""),
                     ]
                     f_intro = 0.74 * ui_scale
                     for idx, line in enumerate(lines):
@@ -1563,16 +1623,14 @@ def run_calibration_ui(
                 groups = np.asarray(all_groups, dtype=np.intp)
                 weights = np.asarray(all_weights, dtype=np.float64)
 
-                model = StereoGazeModel.fit(
+                model = _fit_gaze_model(
                     X=X,
                     targets_xy=Y,
-                    cam1_by_id=config.cam1_by_id,
-                    cam2_by_id=config.cam2_by_id,
-                    monitor=target_mon,
+                    config=config,
+                    target_mon=target_mon,
                     layout=layout,
                     groups=groups,
                     sample_weights=weights,
-                    camera_mode=config.camera_mode,
                 )
                 accepted, refined_model, final_f, final_t, final_g, final_w = (
                     _preview_and_refine_calibration(
