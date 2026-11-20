@@ -246,7 +246,7 @@ def test_onboarding_welcome_light_and_dark_goldens(qapp, tmp_path: Path) -> None
             enable_previews=False,
         )
         try:
-            window.resize(940, 640)
+            window.resize(969, 640)
             window.show()
             qapp.processEvents()
             _compare_golden(window.grab(), f"onboarding-{theme.value}.png")
