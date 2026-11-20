@@ -23,7 +23,7 @@ uv run python packaging/linux/build_deb.py --appimage
 
 The `.deb` installs the app under `/opt/keyboard-killer`, the `/dev/uinput` udev rule, a desktop entry, and an optional systemd user unit. Open **Keyboard-Killer** from the application menu. No terminal, `uv`, or JSON editing is required for first run.
 
-First run is a guided setup: permissions → two cameras → calibration → speech model → optional AI provider → practice → ready.
+First run is a guided setup: permissions → one or two cameras → calibration → speech model → optional AI provider → practice → ready. One camera runs a supported mono path; two give the best stereo accuracy.
 
 > The package bundles a relocatable Python runtime. The public AppImage installer was smoke-tested from the site mirror; installing the `.deb` on Ubuntu/Debian and the full camera/calibration/uinput path remain hardware checks.
 

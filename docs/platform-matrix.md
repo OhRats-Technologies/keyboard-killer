@@ -17,7 +17,7 @@
 | Move/click/scroll | `/dev/uinput` (evdev) | `CGEventPost` | `SendInput` | `PointerBackend` |
 | Type text | uinput keymap + `wl-copy` for non-ASCII | `CGEventKeyboardSetUnicodeString` | `SendInput` + `KEYEVENTF_UNICODE` | `PointerBackend.type_text` |
 | PTT hotkey | evdev `/dev/input/event*` | `CGEventTap` / `IOHIDManager` | `WH_KEYBOARD_LL` | `HotkeySource` |
-| Cameras | V4L2 via OpenCV; `/dev/v4l/by-id` | AVFoundation | Media Foundation | `CameraSource` |
+| Cameras | V4L2 via OpenCV; `/dev/v4l/by-id`; mono or stereo | AVFoundation | Media Foundation | `CameraSource` |
 | Camera controls | V4L2 exposure/gain ioctls | AVFoundation exposure/focus | Media Foundation camera controls | `CameraControls` |
 | Mic/audio | PipeWire/PulseAudio via PortAudio | CoreAudio via PortAudio | WASAPI via PortAudio | `AudioSource` |
 | STT runtime | ONNX Runtime CPU int8; CUDA opt-in (implemented) | not implemented (stub) | not implemented (stub) | `SttEngine` |
@@ -49,7 +49,7 @@
 
 - **Input:** uinput virtual devices are the current path and stay the default. `DryRunPointerBackend` is used by tests and `--dry-run`. `/dev/uinput` is writable on this machine, but synthetic clicks were not exercised end-to-end.
 - **Hotkeys:** evdev is global and works on Wayland, but requires read access to `/dev/input/event*`. The installer should explain this once; the UI should show a permission row, not a terminal warning.
-- **Cameras:** `/dev/v4l/by-id` is the stable identity and the onboarding picker uses it. One camera was present for this session; the two-camera stereo path, calibration, and face-found previews were not exercised. Exposure/gain locking remains V4L2-specific.
+- **Cameras:** `/dev/v4l/by-id` is the stable identity and the onboarding picker uses it. Mono capture was exercised on this machine; the two-camera stereo path, calibration, and face-found previews were not exercised. Exposure/gain locking remains V4L2-specific.
 - **Screen:** capture tries `org.gnome.Shell.Screenshot.ScreenshotArea` then the XDG portal; `doctor` reports screen capability and permission. A denied portal still surfaces at click time (D6 partial). This session is KDE Wayland, so GNOME capture was not exercised.
 - **Accessibility:** AT-SPI worker is optional; if unavailable, the visual tiers still work and the capability report says so.
 - **Overlay:** the hard case. A normal Wayland window cannot be made click-through with a portable API. Options: GNOME Shell extension (native, GNOME-versioned), XWayland input shape (works under XWayland, not native Wayland), or tray/toast only. See D3.
