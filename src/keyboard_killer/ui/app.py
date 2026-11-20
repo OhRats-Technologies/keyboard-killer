@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import importlib.metadata
+import os
 from collections.abc import Callable
-from datetime import datetime, timezone
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -12,6 +12,7 @@ from PySide6.QtGui import QAction, QCloseEvent, QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -27,6 +28,7 @@ from keyboard_killer.config.paths import AppPaths, current_paths
 from keyboard_killer.config.schema import AppConfig
 from keyboard_killer.diagnostics.doctor import collect_doctor, format_text
 from keyboard_killer.platform.linux.cameras import list_cameras, resolve_camera_config
+from keyboard_killer.ui.components import Card, eyebrow, mono, status as status_label
 from keyboard_killer.ui.history.db import HistoryStore
 from keyboard_killer.ui.history.window import HistoryPanel
 from keyboard_killer.ui.onboarding.flow import OnboardingFlow
@@ -48,9 +50,9 @@ class HomePanel(QWidget):
         title = QLabel("Keyboard-Killer")
         title.setObjectName("Title")
         layout.addWidget(title)
-        eyebrow = QLabel("LOCAL GAZE + VOICE")
-        eyebrow.setObjectName("Eyebrow")
-        layout.addWidget(eyebrow)
+        eyebrow_label = QLabel("LOCAL GAZE + VOICE")
+        eyebrow_label.setObjectName("Eyebrow")
+        layout.addWidget(eyebrow_label)
         self.status = QLabel("STOPPED")
         self.status.setObjectName("Pill")
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -75,10 +77,38 @@ class HomePanel(QWidget):
         actions.addStretch(1)
         layout.addLayout(actions)
 
+        setup = QFrame()
+        setup.setObjectName("Card")
+        setup_layout = QVBoxLayout(setup)
+        head = QHBoxLayout()
+        head.addWidget(eyebrow("SETUP"))
+        head.addStretch(1)
+        finish = QPushButton("OPEN SETUP")
+        finish.clicked.connect(window.open_onboarding)
+        head.addWidget(finish)
+        setup_layout.addLayout(head)
+        self.checklist = {}
+        for key, label in (
+            ("input", "Input and microphone"),
+            ("cameras", "Cameras"),
+            ("calibration", "Calibration"),
+            ("speech", "Speech model"),
+            ("provider", "Optional AI provider"),
+        ):
+            row = QHBoxLayout()
+            row.addWidget(QLabel(label))
+            row.addStretch(1)
+            value = QLabel("")
+            value.setObjectName("Muted")
+            row.addWidget(value)
+            setup_layout.addLayout(row)
+            self.checklist[key] = value
+        layout.addWidget(setup)
+
         card = QFrame()
         card.setObjectName("Card")
         card_layout = QVBoxLayout(card)
-        card_layout.addWidget(QLabel("Recent action"))
+        card_layout.addWidget(eyebrow("LAST ACTION"))
         self.last_action = QLabel("No actions yet.")
         self.last_action.setObjectName("Muted")
         self.last_action.setWordWrap(True)
@@ -105,6 +135,35 @@ class HomePanel(QWidget):
                 else f"{item['transcript']} -> {item['route']}"
             )
         self.window.primary_action = self.primary
+        self._refresh_checklist()
+
+    def _refresh_checklist(self) -> None:
+        config = self.window.config
+        uinput = Path("/dev/uinput").exists() and os.access("/dev/uinput", os.W_OK)
+        inputs = bool(Path("/dev/input").glob("event*"))
+        self.checklist["input"].setText(
+            "READY" if uinput and inputs else "NEEDS SETUP"
+        )
+        self.checklist["input"].setObjectName("Success" if uinput and inputs else "Warning")
+        from keyboard_killer.platform.linux.cameras import resolve_camera_config
+        from keyboard_killer.voice.stt.factory import stt_report
+
+        mode, cam1, cam2 = resolve_camera_config(
+            config.camera_mode, config.cam1_by_id, config.cam2_by_id
+        )
+        self.checklist["cameras"].setText(
+            f"{mode.upper()} · {'2 CAMERAS' if cam2 else '1 CAMERA'}"
+        )
+        self.checklist["cameras"].setObjectName("Success" if cam1 else "Warning")
+        calibrated = self.window.paths.calibration_path.exists()
+        self.checklist["calibration"].setText("READY" if calibrated else "NEEDS SETUP")
+        self.checklist["calibration"].setObjectName("Success" if calibrated else "Warning")
+        speech = stt_report(config, paths=self.window.paths)
+        ready = speech.get("selected") == "parakeet"
+        self.checklist["speech"].setText("READY" if ready else "DOWNLOAD NEEDED")
+        self.checklist["speech"].setObjectName("Success" if ready else "Warning")
+        self.checklist["provider"].setText("OPTIONAL")
+        self.checklist["provider"].setObjectName("Muted")
 
     def toggle(self) -> None:
         status = self.window.controller.status
@@ -131,20 +190,25 @@ class HomePanel(QWidget):
 
 
 class CamerasPanel(QWidget):
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(self, window: MainWindow) -> None:
         super().__init__()
-        self.config = config
+        self.window = window
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        head = QHBoxLayout()
         title = QLabel("Cameras")
         title.setObjectName("Heading")
-        layout.addWidget(title)
+        head.addWidget(title)
+        head.addStretch(1)
+        setup = QPushButton("OPEN SETUP")
+        setup.clicked.connect(window.open_onboarding)
+        head.addWidget(setup)
+        layout.addLayout(head)
+        self.card = Card()
+        layout.addWidget(self.card)
         self.body = QLabel("")
         self.body.setWordWrap(True)
-        layout.addWidget(self.body)
-        refresh = QPushButton("Refresh")
-        refresh.clicked.connect(self.refresh)
-        layout.addWidget(refresh, 0, Qt.AlignmentFlag.AlignLeft)
+        self.card.layout.addWidget(self.body)
         layout.addStretch(1)
         self.refresh()
 
@@ -154,14 +218,14 @@ class CamerasPanel(QWidget):
         except Exception as exc:
             self.body.setText(f"Could not list cameras: {exc}")
             return
-        lines = [f"{camera.name}\n  {camera.path}" for camera in cameras] or ["No stable cameras found."]
-        lines.append("")
         mode, cam1, cam2 = resolve_camera_config(
-            self.config.camera_mode, self.config.cam1_by_id, self.config.cam2_by_id
+            self.window.config.camera_mode,
+            self.window.config.cam1_by_id,
+            self.window.config.cam2_by_id,
         )
-        lines.append(f"Mode: {mode}")
-        lines.append(f"Camera 1: {cam1 or 'not set'}")
-        lines.append(f"Camera 2: {cam2 or 'not used (mono)'}")
+        lines = [f"MODE  {mode.upper()}", ""]
+        lines += [f"{camera.name}\n  {camera.path}" for camera in cameras] or ["No stable cameras found."]
+        lines += ["", f"Camera 1  {cam1 or 'not set'}", f"Camera 2  {cam2 or 'not used in mono mode'}"]
         self.body.setText("\n".join(lines))
 
 
@@ -171,23 +235,47 @@ class CalibrationPanel(QWidget):
         self.window = window
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        head = QHBoxLayout()
         title = QLabel("Calibration")
         title.setObjectName("Heading")
-        layout.addWidget(title)
-        self.body = QLabel("")
-        self.body.setWordWrap(True)
-        layout.addWidget(self.body)
-        setup = QPushButton("Open setup")
+        head.addWidget(title)
+        head.addStretch(1)
+        setup = QPushButton("OPEN SETUP")
         setup.clicked.connect(window.open_onboarding)
-        layout.addWidget(setup, 0, Qt.AlignmentFlag.AlignLeft)
+        head.addWidget(setup)
+        layout.addLayout(head)
+        card = Card()
+        self.status = QLabel("")
+        self.status.setObjectName("Muted")
+        card.layout.addWidget(eyebrow("STATUS"))
+        card.layout.addWidget(self.status)
+        self.detail = QLabel(
+            "Calibration teaches the gaze model your screen and posture. "
+            "It opens a full-screen target window."
+        )
+        self.detail.setObjectName("Muted")
+        self.detail.setWordWrap(True)
+        card.layout.addWidget(self.detail)
+        self.advanced = QLabel("")
+        self.advanced.setObjectName("Mono")
+        self.advanced.setWordWrap(True)
+        card.layout.addWidget(self.advanced)
+        layout.addWidget(card)
         layout.addStretch(1)
         self.refresh()
 
     def refresh(self) -> None:
         path = self.window.paths.calibration_path
-        self.body.setText(
-            f"{'Calibration is ready.' if path.exists() else 'Calibration is missing.'}\n{path}"
+        ready = path.exists()
+        self.status.setText("READY" if ready else "NOT CALIBRATED")
+        self.status.setObjectName("Success" if ready else "Warning")
+        self.detail.setText(
+            "Calibration is ready. Re-run it after moving the cameras or monitor."
+            if ready
+            else "Run the guided full-screen calibration before starting vision."
         )
+        self.advanced.setText(f"FILE  {path}")
+        self.advanced.setVisible(False)
 
 
 class ModelsPanel(QWidget):
@@ -196,26 +284,41 @@ class ModelsPanel(QWidget):
         self.window = window
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        head = QHBoxLayout()
         title = QLabel("Models")
         title.setObjectName("Heading")
-        layout.addWidget(title)
-        self.body = QLabel("")
-        self.body.setWordWrap(True)
-        layout.addWidget(self.body)
-        setup = QPushButton("Open setup")
+        head.addWidget(title)
+        head.addStretch(1)
+        setup = QPushButton("OPEN SETUP")
         setup.clicked.connect(window.open_onboarding)
-        layout.addWidget(setup, 0, Qt.AlignmentFlag.AlignLeft)
+        head.addWidget(setup)
+        layout.addLayout(head)
+        card = Card()
+        card.layout.addWidget(eyebrow("SPEECH"))
+        name = QLabel("Parakeet TDT 0.6B v2")
+        name.setObjectName("Heading")
+        card.layout.addWidget(name)
+        self.status = QLabel("")
+        self.status.setObjectName("Muted")
+        card.layout.addWidget(self.status)
+        desc = QLabel("English · ONNX int8 · CPU by default · about 630 MB")
+        desc.setObjectName("Muted")
+        card.layout.addWidget(desc)
+        self.path = QLabel("")
+        self.path.setObjectName("Mono")
+        self.path.setWordWrap(True)
+        card.layout.addWidget(self.path)
+        layout.addWidget(card)
         layout.addStretch(1)
         self.refresh()
 
     def refresh(self) -> None:
         report = stt_report(self.window.config, paths=self.window.paths)
         parakeet = report.get("parakeet", {})
-        self.body.setText(
-            f"Selected: {report.get('selected')}\n"
-            f"Parakeet: {parakeet.get('state', 'unknown')}\n"
-            f"Parakeet path: {parakeet.get('path', '')}"
-        )
+        ready = report.get("selected") == "parakeet"
+        self.status.setText("READY" if ready else "DOWNLOAD NEEDED")
+        self.status.setObjectName("Success" if ready else "Warning")
+        self.path.setText(f"FILE  {parakeet.get('path', '')}")
 
 
 class DiagnosticsPanel(QWidget):
@@ -228,18 +331,79 @@ class DiagnosticsPanel(QWidget):
         title.setObjectName("Heading")
         header.addWidget(title)
         header.addStretch(1)
-        refresh = QPushButton("Refresh")
+        refresh = QPushButton("REFRESH")
         refresh.clicked.connect(self.refresh)
         header.addWidget(refresh)
         layout.addLayout(header)
+        subtitle = QLabel("The same report used by setup and the tray.")
+        subtitle.setObjectName("Muted")
+        layout.addWidget(subtitle)
+
+        summary = Card()
+        grid = QGridLayout()
+        self.badges: dict[str, QLabel] = {}
+        for row, (key, label) in enumerate(
+            (
+                ("input", "Input"),
+                ("cameras", "Cameras"),
+                ("screen", "Screen"),
+                ("speech", "Speech"),
+                ("ai", "AI provider"),
+                ("overlay", "Overlay"),
+            )
+        ):
+            name = QLabel(label)
+            value = QLabel("CHECKING")
+            value.setObjectName("Muted")
+            grid.addWidget(name, row, 0)
+            grid.addWidget(value, row, 1)
+            self.badges[key] = value
+        grid.setColumnStretch(1, 1)
+        summary.layout.addLayout(grid)
+        layout.addWidget(summary)
+
+        detail_label = eyebrow("TECHNICAL DETAIL")
+        layout.addWidget(detail_label)
         self.text = QTextEdit()
         self.text.setReadOnly(True)
         layout.addWidget(self.text, 1)
         self.refresh()
 
+    @staticmethod
+    def _set_badge(label: QLabel, text: str, ok: bool | None) -> None:
+        label.setText(text.upper())
+        label.setObjectName("Success" if ok is True else "Warning" if ok is False else "Muted")
+        label.style().unpolish(label)
+        label.style().polish(label)
+
     def refresh(self) -> None:
         try:
             report = collect_doctor(check_providers=False)
+            caps = report.capabilities.get("capabilities", {})
+            self._set_badge(
+                self.badges["input"],
+                caps.get("pointer", {}).get("status", "unknown"),
+                caps.get("pointer", {}).get("status") == "available",
+            )
+            cameras = report.cameras.get("mode", "unknown")
+            self._set_badge(self.badges["cameras"], cameras, cameras in ("mono", "stereo"))
+            self._set_badge(
+                self.badges["screen"],
+                caps.get("screen_capture", {}).get("status", "unknown"),
+                caps.get("screen_capture", {}).get("status") == "available",
+            )
+            self._set_badge(
+                self.badges["speech"],
+                report.stt.get("selected", "missing"),
+                report.stt.get("selected") == "parakeet",
+            )
+            text_status = report.providers.get("text_llm", {}).get("status", {}).get("state", "not checked")
+            self._set_badge(self.badges["ai"], text_status, text_status == "ready")
+            self._set_badge(
+                self.badges["overlay"],
+                caps.get("overlay", {}).get("status", "unknown"),
+                caps.get("overlay", {}).get("status") == "available",
+            )
             self.text.setPlainText(format_text(report))
         except Exception as exc:
             self.text.setPlainText(f"Diagnostics failed: {exc}")
@@ -332,7 +496,7 @@ class MainWindow(QMainWindow):
         self.home = HomePanel(self)
         self.pages: dict[str, QWidget] = {
             "Home": self.home,
-            "Cameras": CamerasPanel(self.config),
+            "Cameras": CamerasPanel(self),
             "Calibration": CalibrationPanel(self),
             "Models": ModelsPanel(self),
             "Settings": SettingsPanel(self.config, self.paths),

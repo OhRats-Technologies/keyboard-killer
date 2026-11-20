@@ -1310,7 +1310,7 @@ def run_calibration_ui(
             use_gpu=config.use_gpu,
             keep_images=False,
         ) as stereo:
-            cam2_label = "Mono camera" if stereo.mono else "Cam2 (CAM 313)"
+            cam2_label = "Mono camera" if stereo.mono else "Camera 2"
             while True:
                 neutral_yaw = 0.0
                 neutral_pitch = 0.0
@@ -1333,7 +1333,7 @@ def run_calibration_ui(
                     d1, d2 = stereo.delegates
                     lines = [
                         f"Hybrid Huber + Multi-Scale RBF Calibration on {target_mon.connector} ({target_mon.width}x{target_mon.height}) [{d1}/{d2}]",
-                        f"Cam1 (C270): {'FACE OK' if cam1_ok else 'NO FACE'}   |   "
+                        f"Camera 1: {'FACE OK' if cam1_ok else 'NO FACE'}   |   "
                         f"{cam2_label}: {'FACE OK' if cam2_ok else 'NO FACE'}   |   "
                         f"Saved Replay Dataset: {replay_count} samples",
                         "Stage 1 (13 Quick Anchors): Fixate on the center pinhole of each dot.",

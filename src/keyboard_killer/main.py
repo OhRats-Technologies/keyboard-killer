@@ -103,7 +103,7 @@ def check_system() -> None:
     table.add_column("Slot")
     table.add_column("By-ID Path")
     table.add_column("Status")
-    for slot, path in [("cam1 (C270)", cfg.cam1_by_id), ("cam2 (CAM 313)", cfg.cam2_by_id)]:
+    for slot, path in [("Camera 1", cfg.cam1_by_id), ("Camera 2", cfg.cam2_by_id)]:
         exists = Path(path).exists()
         status = f"[green]OK ({os.path.realpath(path)})[/green]" if exists else "[red]MISSING[/red]"
         table.add_row(slot, path, status)
@@ -137,10 +137,10 @@ def check_system() -> None:
 
 @app.command("test-cams")
 def test_cams(
-    exp1: int | None = typer.Option(None, help="Cam1 (C270) manual exposure"),
-    gain1: int | None = typer.Option(None, help="Cam1 (C270) sensor gain (0-255)"),
-    exp2: int | None = typer.Option(None, help="Cam2 (CAM 313) manual exposure"),
-    gain2: int | None = typer.Option(None, help="Cam2 (CAM 313) sensor gain (16-255)"),
+    exp1: int | None = typer.Option(None, help="Camera 1 manual exposure"),
+    gain1: int | None = typer.Option(None, help="Camera 1 sensor gain (0-255)"),
+    exp2: int | None = typer.Option(None, help="Camera 2 manual exposure"),
+    gain2: int | None = typer.Option(None, help="Camera 2 sensor gain (16-255)"),
     headless: bool = typer.Option(False, help="Run without opening a GUI preview window"),
     seconds: float = typer.Option(0.0, help="Auto-stop after N seconds (0 = until 'q'/ESC)"),
 ) -> None:
@@ -222,10 +222,10 @@ def test_cams(
 
                 if not headless:
                     v1 = _draw_overlay(
-                        pair.cam1.image, obs1, "Cam1 (C270)", pair.cam1.measured_fps, pair.skew_ms
+                        pair.cam1.image, obs1, "Camera 1", pair.cam1.measured_fps, pair.skew_ms
                     )
                     v2 = _draw_overlay(
-                        pair.cam2.image, obs2, "Cam2 (CAM 313)", pair.cam2.measured_fps, pair.skew_ms
+                        pair.cam2.image, obs2, "Camera 2", pair.cam2.measured_fps, pair.skew_ms
                     )
                     v1_s = cv2.resize(v1, (800, 450))
                     v2_s = cv2.resize(v2, (800, 450))
@@ -235,12 +235,19 @@ def test_cams(
                     if key in (27, ord("q")):
                         break
 
-            console.print(
-                f"Checked {frames_checked} paired frames | "
-                f"measured fps: cam1={last_fps1:.2f}, cam2={last_fps2:.2f} | "
-                f"luma: cam1={last_luma1:.1f}, cam2={last_luma2:.1f} | "
-                f"faces: cam1={faces_cam1}/{frames_checked}, cam2={faces_cam2}/{frames_checked}"
-            )
+            if cfg.camera_mode == "mono":
+                console.print(
+                    f"Checked {frames_checked} frames in mono mode | "
+                    f"fps={last_fps1:.2f} | luma={last_luma1:.1f} | "
+                    f"faces={faces_cam1}/{frames_checked}"
+                )
+            else:
+                console.print(
+                    f"Checked {frames_checked} paired frames | "
+                    f"measured fps: camera1={last_fps1:.2f}, camera2={last_fps2:.2f} | "
+                    f"luma: camera1={last_luma1:.1f}, camera2={last_luma2:.1f} | "
+                    f"faces: camera1={faces_cam1}/{frames_checked}, camera2={faces_cam2}/{frames_checked}"
+                )
     finally:
         if not headless:
             cv2.destroyAllWindows()

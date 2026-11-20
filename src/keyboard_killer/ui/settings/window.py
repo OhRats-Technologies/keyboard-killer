@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
 )
 
 from keyboard_killer.config.paths import AppPaths, current_paths
+from keyboard_killer.platform.linux.cameras import resolve_camera_config
+from keyboard_killer.ui.components import Card, eyebrow
 from keyboard_killer.config.schema import AppConfig
 from keyboard_killer.models.providers.presets import load_presets
 from keyboard_killer.models.providers.secrets import keyring_available
@@ -43,7 +45,9 @@ class SettingsPanel(QWidget):
 
         form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.setVerticalSpacing(10)
 
+        form.addRow(eyebrow("INPUT"))
         self.hotkey = QLineEdit(self.config.ptt_hotkey)
         form.addRow("Push-to-talk key", self.hotkey)
 
@@ -63,10 +67,18 @@ class SettingsPanel(QWidget):
         self.eye_mouse.setChecked(self.config.gaze_cursor_control)
         form.addRow("", self.eye_mouse)
 
+        form.addRow(eyebrow("CAMERAS + SPEECH"))
+        mode, cam1, cam2 = resolve_camera_config(
+            self.config.camera_mode, self.config.cam1_by_id, self.config.cam2_by_id
+        )
+        self.camera_mode = QLabel(f"{mode} · {'2 cameras' if cam2 else '1 camera'}")
+        self.camera_mode.setObjectName("Muted")
+        form.addRow("Camera mode", self.camera_mode)
         self.stt_status = QLabel("")
         self.stt_status.setObjectName("Muted")
-        form.addRow("Speech-to-text", self.stt_status)
+        form.addRow("Speech model", self.stt_status)
 
+        form.addRow(eyebrow("OPTIONAL AI"))
         self.provider_preset = QComboBox()
         for preset in load_presets():
             self.provider_preset.addItem(preset.name, preset.id)
@@ -89,13 +101,16 @@ class SettingsPanel(QWidget):
         state = report.get("parakeet", {}).get("state", "missing")
         self.stt_status.setText(f"Parakeet · {state} · CPU int8 by default")
 
+        form.addRow(eyebrow("SYSTEM"))
         self.keyring_status = QLabel(
             "OS keychain available." if keyring_available() else "OS keychain unavailable."
         )
         self.keyring_status.setObjectName("Muted")
         form.addRow("API keys", self.keyring_status)
 
-        layout.addLayout(form)
+        card = Card()
+        card.layout.addLayout(form)
+        layout.addWidget(card)
 
         capabilities = detect_capabilities(paths=self.paths)
         overlay = capabilities.get("overlay")

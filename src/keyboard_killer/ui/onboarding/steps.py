@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QProgressBar,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -157,7 +158,7 @@ class WelcomePage(StepPage):
         card_layout = QVBoxLayout(card)
         for text in (
             "1. Check camera and input permissions.",
-            "2. Confirm both cameras and run calibration.",
+            "2. Choose one or two cameras and run calibration.",
             "3. Download the English speech model.",
             "4. Practice once, then start listening.",
         ):
@@ -669,7 +670,12 @@ class OnboardingWindow(QDialog):
             self.stack.addWidget(self.pages[step])
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setContentsMargins(32, 22, 32, 22)
+        self.progress = QProgressBar()
+        self.progress.setRange(0, len(STEPS) - 1)
+        self.progress.setTextVisible(False)
+        self.progress.setFixedHeight(4)
+        layout.addWidget(self.progress)
         self.step_label = QLabel("")
         self.step_label.setObjectName("Mono")
         layout.addWidget(self.step_label)
@@ -697,7 +703,10 @@ class OnboardingWindow(QDialog):
             if isinstance(candidate, CamerasPage) and candidate is not page:
                 candidate.close_previews()
         self.stack.setCurrentWidget(page)
-        self.step_label.setText(f"Step {STEPS.index(step) + 1} of {len(STEPS)} — {step.value.capitalize()}")
+        self.progress.setValue(STEPS.index(step))
+        self.step_label.setText(
+            f"{STEPS.index(step) + 1:02d} / {len(STEPS):02d}  ·  {step.value.upper()}"
+        )
         self.back_button.setEnabled(step is not OnboardingStep.WELCOME)
         self.next_button.setText(page.next_label)
         self.skip_button.setVisible(step in OPTIONAL_STEPS)
