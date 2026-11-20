@@ -8,6 +8,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from PySide6.QtCore import QThread, QTimer, Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
@@ -29,6 +30,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from keyboard_killer.audio.quick_test import (
+    LiveRecorder,
+    MicLevel,
+    input_devices,
+    run_speech_test,
+)
 from keyboard_killer.config.paths import AppPaths, current_paths
 from keyboard_killer.config.schema import AppConfig
 from keyboard_killer.diagnostics.doctor import DoctorReport, collect_doctor
@@ -441,6 +448,49 @@ class _DownloadWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class _MicCheckWorker(QThread):
+    done = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, device: int | str | None) -> None:
+        super().__init__()
+        self.recorder = LiveRecorder(device)
+
+    def run(self) -> None:
+        try:
+            audio = self.recorder.record(1.5)
+            peak = float(np.max(np.abs(audio))) if audio.size else 0.0
+            rms = float(np.sqrt(np.mean(audio * audio))) if audio.size else 0.0
+            self.done.emit(MicLevel(peak=peak, rms=rms, seconds=1.5))
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
+class _SpeechTestWorker(QThread):
+    stage = Signal(str)
+    done = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, config: AppConfig, paths: AppPaths) -> None:
+        super().__init__()
+        self.config = config
+        self.paths = paths
+        self.recorder = LiveRecorder(config.audio_device)
+
+    def run(self) -> None:
+        try:
+            result = run_speech_test(
+                self.config,
+                paths=self.paths,
+                seconds=4.0,
+                recorder=self.recorder,
+                on_stage=self.stage.emit,
+            )
+            self.done.emit(result)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
 class SttPage(StepPage):
     step = OnboardingStep.STT
     next_label = "Continue"
@@ -453,6 +503,44 @@ class SttPage(StepPage):
         self.subtitle.setText(
             "Parakeet is the app-owned English model. It runs on the CPU and is the only speech engine."
         )
+        form = QFormLayout()
+        self.mic = QComboBox()
+        self.mic.setMinimumWidth(280)
+        self._populate_microphones()
+        self.mic.currentIndexChanged.connect(self._save_microphone)
+        form.addRow("Microphone", self.mic)
+        self.body.addLayout(form)
+
+        self.body.addWidget(eyebrow("LIVE MIC CHECK"))
+        self.level = QProgressBar()
+        self.level.setRange(0, 100)
+        self.level.setValue(0)
+        self.level.setTextVisible(False)
+        self.body.addWidget(self.level)
+        self.level_note = QLabel("IDLE · CHECK MIC OR TEST TRANSCRIPTION")
+        self.level_note.setObjectName("Mono")
+        self.body.addWidget(self.level_note)
+
+        test_actions = QHBoxLayout()
+        self.check_button = QPushButton("CHECK MIC")
+        self.check_button.clicked.connect(self.check_mic)
+        test_actions.addWidget(self.check_button)
+        self.test_button = QPushButton("TEST TRANSCRIPTION")
+        self.test_button.setObjectName("Primary")
+        self.test_button.clicked.connect(self.test_speech)
+        test_actions.addWidget(self.test_button)
+        test_actions.addStretch(1)
+        self.body.addLayout(test_actions)
+
+        self.transcript = QLabel("No speech test yet.")
+        self.transcript.setObjectName("Heading")
+        self.transcript.setWordWrap(True)
+        self.body.addWidget(self.transcript)
+        self.test_detail = QLabel("")
+        self.test_detail.setObjectName("Mono")
+        self.test_detail.setWordWrap(True)
+        self.body.addWidget(self.test_detail)
+
         self.status = QLabel("")
         self.status.setWordWrap(True)
         self.body.addWidget(self.status)
@@ -469,7 +557,149 @@ class SttPage(StepPage):
         self.body.addLayout(actions)
         self.body.addStretch(1)
         self._worker: _DownloadWorker | None = None
+        self._test_worker: _SpeechTestWorker | None = None
+        self._mic_worker: _MicCheckWorker | None = None
+        self._level_timer = QTimer(self)
+        self._level_timer.setInterval(50)
+        self._level_timer.timeout.connect(self._level_tick)
         self.refresh()
+
+    def _populate_microphones(self) -> None:
+        self.mic.clear()
+        self.mic.addItem("System default", None)
+        for device in input_devices():
+            self.mic.addItem(device.name, device.index)
+        current = self.config.audio_device
+        if current is None:
+            return
+        index = self.mic.findData(current)
+        if index < 0 and isinstance(current, str):
+            index = self.mic.findText(current)
+        if index >= 0:
+            self.mic.setCurrentIndex(index)
+
+    def _save_microphone(self, _index: int) -> None:
+        self.config.audio_device = self.mic.currentData()
+        self.config.save(self.paths.settings_path)
+
+    def _worker_recorder(self):
+        for worker in (self._test_worker, self._mic_worker):
+            if worker is not None and worker.isRunning():
+                return worker.recorder
+        return None
+
+    def _start_level(self) -> None:
+        self.level.setValue(0)
+        self._level_timer.start()
+
+    def _stop_level(self) -> None:
+        self._level_timer.stop()
+        self.level.setValue(0)
+
+    def _level_tick(self) -> None:
+        recorder = self._worker_recorder()
+        if recorder is None:
+            self._stop_level()
+            return
+        level = min(1.0, float(recorder.level) * 12.0)
+        self.level.setValue(int(level * 100))
+
+    def check_mic(self) -> None:
+        if self._mic_worker is not None and self._mic_worker.isRunning():
+            return
+        self.check_button.setEnabled(False)
+        self.test_button.setEnabled(False)
+        self.level_note.setText("LISTENING · 1.5 SECONDS")
+        self.transcript.setText("No speech test yet.")
+        worker = _MicCheckWorker(self.mic.currentData())
+        worker.done.connect(self._on_mic_done)
+        worker.failed.connect(self._on_mic_failed)
+        self._mic_worker = worker
+        self._start_level()
+        worker.start()
+
+    def test_speech(self) -> None:
+        if self._test_worker is not None and self._test_worker.isRunning():
+            return
+        report = stt_report(self.config, paths=self.paths)
+        if report.get("selected") != "parakeet":
+            self.level_note.setText("MODEL NOT READY · DOWNLOAD IT FIRST")
+            return
+        self.check_button.setEnabled(False)
+        self.test_button.setEnabled(False)
+        self.transcript.setText("Listening…")
+        self.test_detail.setText("")
+        self.level_note.setText("LOADING PARAKEET…")
+        worker = _SpeechTestWorker(self.config, self.paths)
+        worker.stage.connect(self._on_test_stage)
+        worker.done.connect(self._on_test_done)
+        worker.failed.connect(self._on_test_failed)
+        self._test_worker = worker
+        self._start_level()
+        worker.start()
+
+    def _on_test_stage(self, stage: str) -> None:
+        if stage == "loading":
+            self.level_note.setText("LOADING PARAKEET…")
+        elif stage == "recording":
+            self.transcript.setText("Listening…")
+            self.level_note.setText("RECORDING · SPEAK NOW")
+        elif stage == "transcribing":
+            self.level_note.setText("TRANSCRIBING…")
+
+    def _on_test_done(self, result: object) -> None:
+        self._stop_level()
+        self.check_button.setEnabled(True)
+        self.test_button.setEnabled(True)
+        transcript = getattr(result, "transcript", "")
+        self.transcript.setText(f"“{transcript}”" if transcript else "No words recognized.")
+        self.test_detail.setText(
+            f"{getattr(result, 'latency_ms', 0):.0f} MS · "
+            f"PEAK {getattr(result, 'peak', 0):.3f} · "
+            f"{getattr(result, 'engine', 'parakeet')}"
+        )
+        self.level_note.setText(
+            "HEARD · LOCAL PARAKEET" if transcript else "NO SPEECH DETECTED"
+        )
+
+    def _on_test_failed(self, message: str) -> None:
+        self._stop_level()
+        self.check_button.setEnabled(True)
+        self.test_button.setEnabled(True)
+        self.level_note.setText("TEST FAILED")
+        self.test_detail.setText(message)
+        self.transcript.setText("No speech test yet.")
+
+    def _on_mic_done(self, level: object) -> None:
+        self._stop_level()
+        self.check_button.setEnabled(True)
+        self.test_button.setEnabled(True)
+        peak = getattr(level, "peak", 0.0)
+        rms = getattr(level, "rms", 0.0)
+        self.level_note.setText(
+            (
+                f"HEARD · PEAK {peak:.3f} · RMS {rms:.3f}"
+                if getattr(level, "heard", False)
+                else "NO SIGNAL · TRY ANOTHER MICROPHONE"
+            )
+        )
+
+    def _on_mic_failed(self, message: str) -> None:
+        self._stop_level()
+        self.check_button.setEnabled(True)
+        self.test_button.setEnabled(True)
+        self.level_note.setText(f"MIC FAILED · {message}")
+
+    def _stop_tests(self) -> None:
+        for worker in (self._test_worker, self._mic_worker):
+            if worker is not None and worker.isRunning():
+                worker.recorder.stop()
+                worker.wait(2500)
+        self._stop_level()
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        self._stop_tests()
+        super().hideEvent(event)
 
     def refresh(self) -> None:
         report = stt_report(self.config, paths=self.paths)
@@ -479,6 +709,8 @@ class SttPage(StepPage):
         self.status.setObjectName("Success" if state == "ready" else "Warning")
         self.download_button.setEnabled(state != "ready")
         self.download_button.setText("Model ready" if state == "ready" else "Download model (630 MB)")
+        running = self._test_worker is not None and self._test_worker.isRunning()
+        self.test_button.setEnabled(state == "ready" and not running)
 
     def download(self) -> None:
         if self._worker is not None:
@@ -514,7 +746,11 @@ class SttPage(StepPage):
             return False, "Download the pinned Parakeet model to continue."
         return True, ""
 
+    def on_enter(self) -> None:
+        self.refresh()
+
     def close_worker(self) -> None:
+        self._stop_tests()
         if self._worker is not None:
             self._worker.wait(1000)
 

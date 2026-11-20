@@ -318,3 +318,33 @@ def test_settings_mic_check_reports_signal(qapp, tmp_path, monkeypatch) -> None:
         assert "0.210" in panel.mic_result.text()
     finally:
         panel.stop()
+
+
+def test_onboarding_stt_page_reports_mic_and_transcript(qapp, tmp_path) -> None:
+    from keyboard_killer.audio.quick_test import MicLevel, SpeechTestResult
+    from keyboard_killer.ui.onboarding.steps import SttPage
+
+    paths = _paths(tmp_path)
+    config = AppConfig(camera_mode="mono")
+    page = SttPage(config, paths)
+    try:
+        page._on_mic_done(MicLevel(peak=0.21, rms=0.05, seconds=1.5))
+        assert "HEARD" in page.level_note.text()
+        assert "0.210" in page.level_note.text()
+        page._on_test_done(
+            SpeechTestResult(
+                transcript="click send",
+                latency_ms=41.0,
+                recorded_s=4.0,
+                sample_rate=16000,
+                peak=0.2,
+                engine="parakeet-tdt-0.6b-v2",
+            )
+        )
+        assert "click send" in page.transcript.text()
+        assert "41 MS" in page.test_detail.text()
+        page.mic.addItem("Fake microphone", 42)
+        page.mic.setCurrentIndex(page.mic.count() - 1)
+        assert AppConfig.load(paths.settings_path).audio_device == 42
+    finally:
+        page.close_worker()

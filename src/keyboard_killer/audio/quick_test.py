@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -98,12 +100,61 @@ def record_clip(
     return np.asarray(audio, dtype=np.float32).reshape(-1)
 
 
+class LiveRecorder:
+    """PortAudio InputStream that exposes a live RMS level while recording."""
+
+    def __init__(
+        self,
+        device: str | int | None = None,
+        *,
+        sample_rate: int = SAMPLE_RATE,
+    ) -> None:
+        self.device = device
+        self.sample_rate = int(sample_rate)
+        self.level = 0.0
+        self._chunks: list[np.ndarray] = []
+        self._stop = threading.Event()
+
+    def _callback(self, indata, frames, time_info, status) -> None:
+        chunk = indata[:, 0].copy()
+        self._chunks.append(chunk)
+        self.level = float(np.sqrt(np.mean(chunk * chunk)))
+
+    def record(self, seconds: float) -> np.ndarray:
+        import sounddevice as sd
+
+        self._chunks = []
+        self.level = 0.0
+        self._stop.clear()
+        with sd.InputStream(
+            samplerate=self.sample_rate,
+            channels=1,
+            dtype="float32",
+            device=self.device,
+            callback=self._callback,
+            blocksize=256,
+        ):
+            deadline = time.monotonic() + float(seconds)
+            while not self._stop.is_set() and time.monotonic() < deadline:
+                sd.sleep(50)
+        self.level = 0.0
+        return (
+            np.concatenate(self._chunks)
+            if self._chunks
+            else np.zeros(0, dtype=np.float32)
+        )
+
+    def stop(self) -> None:
+        self._stop.set()
+
+
 def run_speech_test(
     config: AppConfig,
     *,
     paths: AppPaths | None = None,
     seconds: float = DEFAULT_SECONDS,
     engine: SttEngine | None = None,
+    recorder: LiveRecorder | None = None,
     on_stage: StageCallback | None = None,
 ) -> SpeechTestResult:
     """Load the pinned model, record one clip, and transcribe it locally."""
@@ -114,7 +165,11 @@ def run_speech_test(
         stage("loading")
         engine = create_stt_engine(config, paths=paths).engine
     stage("recording")
-    audio = record_clip(seconds, device=config.audio_device)
+    audio = (
+        recorder.record(seconds)
+        if recorder is not None
+        else record_clip(seconds, device=config.audio_device)
+    )
     stage("transcribing")
     detail = engine.transcribe_detailed(audio)
     peak = float(np.max(np.abs(audio))) if audio.size else 0.0
@@ -131,6 +186,7 @@ def run_speech_test(
 __all__ = [
     "DEFAULT_SECONDS",
     "InputDevice",
+    "LiveRecorder",
     "MicLevel",
     "SAMPLE_RATE",
     "SpeechTestResult",
